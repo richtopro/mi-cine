@@ -61,6 +61,14 @@ main{padding-bottom:calc(76px + env(safe-area-inset-bottom));min-height:100vh}
 
 .hero{position:relative;height:74vh;min-height:440px;max-height:780px;overflow:hidden}
 .hero .bgimg{position:absolute;inset:0;background-size:cover;background-position:center 20%}
+.hero .trailer{position:absolute;inset:0;overflow:hidden;opacity:0;transition:opacity 1.2s;pointer-events:none}
+.hero .trailer.on{opacity:1}
+.hero .trailer iframe{position:absolute;top:50%;left:50%;border:0;transform:translate(-50%,-50%)}
+.hero .mute{position:absolute;right:16px;bottom:96px;z-index:2;width:40px;height:40px;border-radius:50%;border:1.5px solid #ddd;background:rgba(0,0,0,.35);color:#fff;display:grid;place-items:center;opacity:0;transition:opacity .6s}
+.hero .mute.on{opacity:1}
+@media (min-width:900px){.hero .mute{right:4%;bottom:26%}}
+.pminitxt{font-size:13px;font-weight:700;margin-left:4px}
+@media (max-width:699px){.pminitxt{display:none}}
 .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(to top,var(--bg) 1%,rgba(20,20,20,.6) 32%,transparent 62%),linear-gradient(to bottom,rgba(0,0,0,.45),transparent 22%)}
 .hero-content{position:absolute;left:0;right:0;bottom:22px;z-index:1;text-align:center;padding:0 20px}
 .hero h1{font-size:clamp(30px,8vw,60px);line-height:1.02;margin:0 0 10px;text-shadow:0 2px 16px rgba(0,0,0,.7);font-weight:900;letter-spacing:-.5px}
@@ -990,7 +998,7 @@ function heroHtml(it, rankLabel){
   const img = narrow ? (posterUrl(it, 'w780') || backUrl(it, 'w780')) : (backUrl(it) || posterUrl(it, 'w780'));
   const gs = it.g.slice(0, 3).map(genreName);
   const inList = pdata().list.includes(it.key);
-  return `<div class="hero"><div class="bgimg" style="${img ? `background-image:url('${img}')` : `background:linear-gradient(155deg,hsl(${hash(it.title)%360},55%,35%),#111)`}"></div>
+  return `<div class="hero" data-k="${esc(it.key)}"><div class="bgimg" style="${img ? `background-image:url('${img}')` : `background:linear-gradient(155deg,hsl(${hash(it.title)%360},55%,35%),#111)`}"></div>
     <div class="hero-content">
       <h1>${esc(it.title)}</h1>
       ${rankLabel ? `<div class="rank"><span class="t10">TOP<b>10</b></span>${esc(rankLabel)}</div>` : ''}
@@ -1036,6 +1044,61 @@ function decorateRows(){
     sc.addEventListener('scroll', upd, { passive: true }); upd();
   }
 }
+/* ---------- tráiler en la portada (YouTube, vía TMDB) ---------- */
+const TRAILERS = LS.get('trailers', {});
+async function trailerKey(it){
+  if (!it?.tmdbId || S.demo) return null;
+  const k = it.type + ':' + it.tmdbId, c = TRAILERS[k];
+  if (c && (c.key || Date.now() - c.at < 7 * DAY)) return c.key;
+  let list = [];
+  try {
+    if (S.server) list = (await api(`videos?type=${it.type}&id=${it.tmdbId}`)).results || [];
+    else list = (await tmdb(`/${it.type}/${it.tmdbId}/videos`, { include_video_language: 'es,en,null' })).results || [];
+  } catch { return null; }
+  const yt = list.filter(v => v.site === 'YouTube');
+  const pick = yt.find(v => v.type === 'Trailer' && v.iso_639_1 === 'es') || yt.find(v => v.type === 'Trailer') || yt.find(v => v.type === 'Teaser') || yt[0];
+  TRAILERS[k] = { key: pick ? pick.key : null, at: Date.now() }; LS.set('trailers', TRAILERS);
+  return TRAILERS[k].key;
+}
+let heroTimer = null, heroGen = 0;
+function ytCmd(func){ const f = $('#view .hero .trailer iframe'); try { f?.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: [] }), '*'); } catch {} }
+function sizeTrailer(){
+  const hero = $('#view .hero'), f = hero?.querySelector('.trailer iframe'); if (!f) return;
+  const W = hero.clientWidth, H = hero.clientHeight;
+  let w = Math.max(W, H * 16 / 9), hh = w * 9 / 16; if (hh < H) { hh = H; w = hh * 16 / 9; }
+  f.style.width = Math.ceil(w * 1.2) + 'px'; f.style.height = Math.ceil(hh * 1.2) + 'px'; // 1.2 = esconde los rótulos de YouTube
+}
+function stopHeroTrailer(){ clearTimeout(heroTimer); heroGen++; ytCmd('pauseVideo'); }
+async function startHeroTrailer(){
+  clearTimeout(heroTimer); const gen = ++heroGen;
+  const hero = $('#view .hero'); if (!hero?.dataset.k || LS.get('noTrailers')) return;
+  const key = await trailerKey(S.byKey[hero.dataset.k]);
+  if (!key || gen !== heroGen || !hero.isConnected) return;
+  heroTimer = setTimeout(() => {
+    if (gen !== heroGen || !hero.isConnected || !$('#player').classList.contains('hidden') || document.hidden) return;
+    const box = document.createElement('div'); box.className = 'trailer';
+    const src = `https://www.youtube-nocookie.com/embed/${key}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&loop=1&playlist=${key}&modestbranding=1&playsinline=1&rel=0&iv_load_policy=3&cc_load_policy=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+    box.innerHTML = `<iframe src="${src}" allow="autoplay; encrypted-media; picture-in-picture" tabindex="-1" title="Tráiler"></iframe>`;
+    hero.querySelector('.bgimg').after(box);
+    sizeTrailer();
+    const mute = document.createElement('button'); mute.className = 'mute'; mute.setAttribute('aria-label', 'Sonido del tráiler');
+    const icon = () => mute.innerHTML = S.trailerSound
+      ? '<svg class="i" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 8v8a4.5 4.5 0 002.5-4zM14 3.2v2.1a7 7 0 010 13.4v2.1a9 9 0 000-17.6z"/></svg>'
+      : '<svg class="i" viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0014 8v2.2l2.5 2.5V12zm2.5 0c0 .9-.2 1.8-.5 2.6l1.5 1.5A9 9 0 0014 3.2v2.1a7 7 0 015 6.7zM4.3 3 3 4.3 7.7 9H3v6h4l5 5v-6.7l4.3 4.2a7 7 0 01-2.3 1.2v2.1a9 9 0 003.7-1.8L19.7 21 21 19.7 4.3 3zM12 4 9.9 6.1 12 8.2V4z"/></svg>';
+    icon();
+    mute.onclick = e => { e.stopPropagation(); S.trailerSound = !S.trailerSound; ytCmd(S.trailerSound ? 'unMute' : 'mute'); icon(); };
+    hero.appendChild(mute);
+    box.querySelector('iframe').onload = () => setTimeout(() => {
+      if (gen !== heroGen) return;
+      box.classList.add('on'); mute.classList.add('on');
+      if (S.trailerSound) ytCmd('unMute');
+    }, 1800);
+  }, 2500);
+}
+addEventListener('resize', () => sizeTrailer());
+addEventListener('scroll', () => { const hero = $('#view .hero .trailer'); if (!hero) return; const out = hero.getBoundingClientRect().bottom < 80; if (out !== S.heroOut) { S.heroOut = out; ytCmd(out ? 'pauseVideo' : 'playVideo'); } }, { passive: true });
+document.addEventListener('visibilitychange', () => { if ($('#view .hero .trailer')) ytCmd(document.hidden ? 'pauseVideo' : 'playVideo'); });
+
 function setTab(tab){
   S.tab = tab; S.genreFilter = null;
   for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
@@ -1055,6 +1118,7 @@ function render(){
   else if (S.tab === 'search') { v.innerHTML = searchHtml(); const i = $('#q'); i.value = S.q || ''; i.oninput = () => { S.q = i.value; $('#results').innerHTML = searchResults(); decorateRows(); }; if (!S.q) setTimeout(() => i.focus(), 50); return; }
   window.scrollTo(0, y);
   decorateRows();
+  startHeroTrailer();
 }
 function homeHtml(){
   const [hero, label] = pickHero();
@@ -1213,6 +1277,7 @@ function toggleList(key){
    ========================================================= */
 let idleTimer = null;
 async function play(key, fileId){
+  stopHeroTrailer();
   const it = S.byKey[key]; if (!it) return;
   const file = (it.eps || it.files).find(f => f.id === fileId) || it.main || it.files[0];
   if (S.demo) { toast('En la demo no hay vídeos reales. Conecta tu Drive para reproducir 🙂'); return; }
@@ -1221,7 +1286,7 @@ async function play(key, fileId){
   const p = $('#player');
   const sub = it.type === 'tv' ? `T${file.season}:E${file.episode}` : '';
   p.innerHTML = `<div class="pbar"><button class="hbtn" id="pBack">${ICON.back}</button><div class="ttl">${esc(it.title)}<small>${sub}</small></div><span style="flex:1"></span>
-    ${document.pictureInPictureEnabled ? `<button class="hbtn" id="pMini" title="Minimizar en ventana flotante" aria-label="Minimizar en ventana flotante"><svg class="i" viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V5c0-1.1-.9-2-2-2H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg></button>` : ''}</div>
+    ${document.pictureInPictureEnabled ? `<button class="hbtn" id="pMini" title="Minimizar en ventana flotante" aria-label="Minimizar en ventana flotante" style="display:flex;align-items:center"><svg class="i" viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V5c0-1.1-.9-2-2-2H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg><span class="pminitxt">Minimizar</span></button>` : ''}</div>
     <video id="vid" controls playsinline preload="auto"></video>
     <button class="btn sec pswitch hidden" id="pSwitch">¿No se ve bien? Usar reproductor de Drive</button>
     <button class="btn play pnext hidden" id="pNext">${ICON.next}Siguiente episodio</button>`;
@@ -1367,10 +1432,12 @@ $('#menuBtn').onclick = () => {
     ${S.demo ? `<button data-m="exitdemo">${ICON.out} Salir de la demo</button>` : S.server ? `
     ${S.user?.admin ? `<button data-m="admin">${ICON.gear} Panel de administración</button>` : ''}
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
+    <button data-m="trailers">${ICON.play} Tráilers en portada: ${LS.get('noTrailers') ? 'no' : 'sí'}</button>
     <button data-m="pass">${ICON.user} Cambiar mi contraseña</button>
     <button data-m="srvlogout">${ICON.out} Cerrar sesión (${esc(S.user?.username || '')})</button>` : `
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
     <button data-m="link">${ICON.link} Copiar enlace para otro dispositivo</button>
+    <button data-m="trailers">${ICON.play} Tráilers en portada: ${LS.get('noTrailers') ? 'no' : 'sí'}</button>
     <button data-m="settings">${ICON.gear} Ajustes (claves y carpeta)</button>
     <button data-m="logout">${ICON.out} Cerrar sesión de Google</button>`}`);
 };
@@ -1380,6 +1447,7 @@ $('#menu').addEventListener('click', async e => {
   if (m === 'who') { S.manage = false; showWho(); }
   if (m === 'admin') return openAdmin();
   if (m === 'pass') return changePassword();
+  if (m === 'trailers') { LS.get('noTrailers') ? LS.del('noTrailers') : LS.set('noTrailers', true); stopHeroTrailer(); render(); return; }
   if (m === 'srvlogout') { try { await api('logout', { method: 'POST', body: {} }); } catch {} LS.del('srvToken'); location.reload(); return; }
   if (m === 'sync' && S.server) { if (S.user?.admin) { try { await api('admin/scan', { method: 'POST', body: {} }); toast('Escaneando en el servidor… Verás el progreso en el panel.'); } catch (err) { toast(err.message); } } else srvLoadLibrary(true, true); return; }
   if (m === 'sync') { LS.del('trend'); try { await ensureToken(true); sync(true); } catch (err) { toast(authError(err)); } }
@@ -1576,6 +1644,7 @@ function tcSetup(){
       <button id="tcFwd" aria-label="Avanzar 30 segundos">+30</button>
       <span class="tt" id="tcTime"></span><span class="sp"></span>
       ${c.tc.tracks.length > 1 ? `<select id="tcAudio" aria-label="Pista de audio">${c.tc.tracks.map(t => `<option value="${t.index}" ${t.index === c.tc.audio ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>` : ''}
+      ${document.pictureInPictureEnabled ? `<button id="tcMini" aria-label="Minimizar en ventana flotante" title="Minimizar"><svg class="i" viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V5c0-1.1-.9-2-2-2H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg></button>` : ''}
       <button id="tcFs" aria-label="Pantalla completa"><svg class="i" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zM14 5v2h3v3h2V5z"/></svg></button>
     </div>`;
   p.appendChild(bar);
@@ -1586,6 +1655,7 @@ function tcSetup(){
   $('#tcBack').onclick = () => tcSeek(vpos(v) - 10);
   $('#tcFwd').onclick = () => tcSeek(vpos(v) + 30);
   $('#tcFs').onclick = () => { try { document.fullscreenElement ? document.exitFullscreen() : (p.requestFullscreen?.() || p.webkitRequestFullscreen?.()); } catch {} };
+  if ($('#tcMini')) $('#tcMini').onclick = miniPlayer;
   if ($('#tcAudio')) $('#tcAudio').onchange = e => { c.tc.audio = +e.target.value; tcSeek(vpos(v)); };
   v.onclick = () => v.paused ? v.play() : v.pause();
   v.addEventListener('play', tcUpdate); v.addEventListener('pause', tcUpdate);

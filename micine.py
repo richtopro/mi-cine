@@ -754,6 +754,20 @@ class Handler(BaseHTTPRequestHandler):
             if not full:
                 return self.err(404, 'vídeo no encontrado')
             return self.send(200, playback_plan(fid, full, (q.get('mkv') or ['1'])[0] == '0'))
+        if ep == 'videos':
+            ty, tid = (q.get('type') or [''])[0], (q.get('id') or [''])[0]
+            if ty not in ('movie', 'tv') or not tid.isdigit():
+                return self.err(400, 'parámetros')
+            k = 'videos:%s:%s' % (ty, tid)
+            data = kv_get(k, 7 * DAY)
+            if data is None:
+                try:
+                    res = tmdb('/%s/%s/videos' % (ty, tid), include_video_language='es,en,null').get('results') or []
+                    data = {'results': [{k2: v.get(k2) for k2 in ('key', 'site', 'type', 'iso_639_1', 'official')} for v in res]}
+                    kv_set(k, data)
+                except Exception:
+                    data = {'results': []}
+            return self.send(200, data)
         if ep == 'season':
             tv, s = (q.get('tv') or [''])[0], (q.get('s') or [''])[0]
             if not (tv.isdigit() and s.isdigit()):
