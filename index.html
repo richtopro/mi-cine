@@ -284,12 +284,37 @@ const ICON = {
   out:'<svg class="i" viewBox="0 0 24 24"><path d="M10 17l1.4-1.4L8.8 13H20v-2H8.8l2.6-2.6L10 7l-5 5zM4 5h8V3H4a2 2 0 00-2 2v14a2 2 0 002 2h8v-2H4z"/></svg>'
 };
 
+/* IndexedDB: guarda la biblioteca sin el límite de 5 MB de localStorage */
+const DB = {
+  db: null,
+  open(){
+    if (this.db) return Promise.resolve(this.db);
+    return new Promise((res, rej) => {
+      try {
+        const r = indexedDB.open('mi-cine', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('kv');
+        r.onsuccess = () => res(this.db = r.result);
+        r.onerror = () => rej(r.error);
+      } catch (e) { rej(e); }
+    });
+  },
+  async get(k, d){
+    try { const db = await this.open(); return await new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result ?? d); q.onerror = () => rej(q.error); }); }
+    catch { return LS.get(k, d); }
+  },
+  async set(k, v){
+    try { const db = await this.open(); await new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+    catch { LS.set(k, v); }
+  }
+};
+const FULL_SCAN_EVERY = DAY; // revisión completa (para detectar borrados) una vez al día
+
 /* ---------------- estado ---------------- */
 const S = {
   cfg: {}, demo: false,
   token: null, tokenExp: 0, tokenClient: null,
   files: [], items: [], byKey: {}, others: [],
-  meta: LS.get('meta', {}), genres: LS.get('genres', {}), trending: [],
+  meta: {}, folders: {}, genres: LS.get('genres', {}), trending: [],
   stats: null, statsFileId: null, profile: null,
   tab: 'home', genreFilter: null, seasons: {}, cur: null, manage: false
 };
@@ -297,7 +322,7 @@ const S = {
 /* =========================================================
    Arranque
    ========================================================= */
-function boot(){
+async function boot(){
   importHashConfig();
   S.cfg = Object.assign({}, window.MI_CINE_CONFIG || {}, LS.get('cfg', {}));
   const qs = new URLSearchParams(location.search);
@@ -307,7 +332,11 @@ function boot(){
   const t = sessionStorage.getItem('mc_token');
   if (t) { try { const o = JSON.parse(t); if (o.exp > Date.now() + 60e3) { S.token = o.token; S.tokenExp = o.exp; } } catch {} }
   S.stats = LS.get('stats', null) || newStats();
-  S.files = LS.get('files', []);
+  // biblioteca guardada (con migración desde la versión anterior)
+  S.files = await DB.get('files', null) || LS.get('files', []);
+  S.meta = await DB.get('meta', null) || LS.get('meta', {});
+  S.folders = await DB.get('folders', {});
+  LS.del('files'); LS.del('meta');
   showWho();
 }
 
@@ -350,6 +379,7 @@ $('#saveCfg').onclick = async () => {
   S.cfg = cfg;
   try { await tmdb('/configuration'); } catch { err.textContent = 'TMDB no acepta esa clave. Revísala.'; return; }
   err.textContent = '';
+  if (cfg.driveFolder !== (LS.get('cfg', {}).driveFolder || '')) LS.del('lastFull');
   LS.set('cfg', cfg);
   location.reload();
 };
@@ -490,27 +520,46 @@ function folderId(v){
   const m = String(v).match(/folders\/([\w-]{10,})/) || String(v).match(/[?&]id=([\w-]{10,})/);
   return m ? m[1] : String(v).trim();
 }
-async function scanDrive(){
-  const [folders, videos] = await Promise.all([
-    driveList("mimeType='application/vnd.google-apps.folder' and trashed=false", 'id,name,parents'),
-    driveList("mimeType contains 'video/' and trashed=false", 'id,name,mimeType,size,createdTime,parents,thumbnailLink,videoMediaMetadata(durationMillis)')
-  ]);
-  const fmap = Object.fromEntries(folders.map(f => [f.id, f]));
+const VIDEO_FIELDS = 'id,name,mimeType,size,createdTime,parents,thumbnailLink,videoMediaMetadata(durationMillis)';
+function toFile(v){
+  if (/\bsample\b|\btrailer\b/i.test(v.name)) return null;
+  if (v.size && +v.size < 15e6) return null;
   const root = folderId(S.cfg.driveFolder);
-  const out = [];
-  for (const v of videos) {
-    if (/\bsample\b|\btrailer\b/i.test(v.name)) continue;
-    if (v.size && +v.size < 15e6) continue;
-    const path = []; let p = v.parents?.[0], ok = !root, guard = 0;
-    while (p && guard++ < 20) {
-      if (p === root) { ok = true; break; }
-      const f = fmap[p]; if (!f) break;
-      path.push(f.name); p = f.parents?.[0];
-    }
-    if (!ok) continue;
-    out.push({ id: v.id, n: v.name, m: v.mimeType, s: +v.size || 0, c: v.createdTime, th: v.thumbnailLink || '', d: +(v.videoMediaMetadata?.durationMillis || 0), p: path.slice(0, 4) });
+  const path = []; let p = v.parents?.[0], ok = !root, guard = 0;
+  while (p && guard++ < 20) {
+    if (p === root) { ok = true; break; }
+    const f = S.folders[p]; if (!f) break;
+    path.push(f[0]); p = f[1];
   }
-  return out;
+  if (!ok) return null;
+  return { id: v.id, n: v.name, m: v.mimeType, s: +v.size || 0, c: v.createdTime, th: v.thumbnailLink || '', d: +(v.videoMediaMetadata?.durationMillis || 0), p: path.slice(0, 4) };
+}
+/* full = recorre todo Drive (detecta borrados). Si no, solo pide lo creado desde la última vez. */
+async function scanDrive(full){
+  const startedAt = new Date(Date.now() - 5 * 60e3).toISOString(); // margen de 5 min
+  const since = LS.get('lastScan', '');
+  const newer = !full && since ? ` and createdTime > '${since}'` : '';
+  const [folders, videos] = await Promise.all([
+    driveList("mimeType='application/vnd.google-apps.folder' and trashed=false" + newer, 'id,name,parents'),
+    driveList("mimeType contains 'video/' and trashed=false" + newer, VIDEO_FIELDS)
+  ]);
+  if (full) S.folders = {};
+  for (const f of folders) S.folders[f.id] = [f.name, f.parents?.[0] || ''];
+  const found = videos.map(toFile).filter(Boolean);
+  let files, added;
+  if (full) {
+    const before = new Set(S.files.map(f => f.id));
+    files = found; added = found.filter(f => !before.has(f.id)).length;
+    LS.set('lastFull', Date.now());
+  } else {
+    const byId = Object.fromEntries(S.files.map(f => [f.id, f]));
+    added = 0;
+    for (const f of found) { if (!byId[f.id]) added++; byId[f.id] = f; }
+    files = Object.values(byId);
+  }
+  LS.set('lastScan', startedAt);
+  await DB.set('folders', S.folders);
+  return { files, added, changed: full || added > 0 };
 }
 
 /* estadísticas (perfiles, progreso, vistas) en la carpeta oculta de la app en tu Drive */
@@ -742,33 +791,41 @@ async function enterApp(){
   if (S.demo) return;
   sync();
 }
-async function sync(){
+async function sync(force){
   if (syncing) return; syncing = true;
   const first = !S.files.length;
-  toast(first ? 'Leyendo tu Google Drive…' : 'Buscando novedades…', true);
+  const full = force || first || Date.now() - LS.get('lastFull', 0) > FULL_SCAN_EVERY;
+  if (first) toast('Leyendo tu Google Drive por primera vez…', true);
+  else if (force) toast('Actualizando biblioteca…', true);
   try {
     await Promise.all([
       loadStatsRemote(),
       loadGenres().catch(e => console.warn(e)),
       loadTrending().catch(e => console.warn(e))
     ]);
-    const files = await scanDrive();
-    S.files = files; LS.set('files', files);
-    buildLibrary(); render();
+    const before = S.items.length;
+    const { files, added, changed } = await scanDrive(full);
+    if (changed) {
+      S.files = files; await DB.set('files', files);
+      buildLibrary(); render();
+    } else render(); // por si cambiaron las tendencias o las vistas
     const pending = Object.values(S.byKey).flatMap(it => it.groups).filter(g => { const m = S.meta[g.k0]; return !m || (m.miss && Date.now() - m.miss > 7 * DAY); });
     if (pending.length) {
       let done = 0;
-      toast(`Buscando carátulas: 0/${pending.length}`, true);
+      const loud = first || force || pending.length > 5;
+      if (loud) toast(`Buscando carátulas: 0/${pending.length}`, true);
       await pool(pending, 6, async g => {
         await lookup(g); done++;
-        if (done % 10 === 0) { toast(`Buscando carátulas: ${done}/${pending.length}`, true); LS.set('meta', S.meta); }
+        if (done % 10 === 0) { if (loud) toast(`Buscando carátulas: ${done}/${pending.length}`, true); DB.set('meta', S.meta); }
         if (done % 40 === 0) { buildLibrary(); render(); }
       });
-      LS.set('meta', S.meta);
+      await DB.set('meta', S.meta);
       buildLibrary(); render();
     }
-    toast(`${S.items.length} títulos en tu biblioteca`);
-    if (!files.length) toast('No he encontrado vídeos en Drive. Revisa la carpeta en Ajustes.');
+    if (first || force) toast(`${S.items.length} títulos en tu biblioteca`);
+    else if (added) { const n = Math.max(S.items.length - before, 0); toast(n ? `${n} título${n > 1 ? 's' : ''} nuevo${n > 1 ? 's' : ''} en tu biblioteca` : `${added} vídeo${added > 1 ? 's' : ''} nuevo${added > 1 ? 's' : ''}`); }
+    else $('#toast').classList.add('hidden');
+    if (!S.files.length) toast('No he encontrado vídeos en Drive. Revisa la carpeta en Ajustes.');
   } catch (e) {
     console.error(e);
     if (String(e.message).includes('auth')) toast('La sesión de Google ha caducado. Toca tu perfil para volver a entrar.');
@@ -1204,7 +1261,7 @@ $('#menu').addEventListener('click', async e => {
   const b = e.target.closest('[data-m]'); if (!b) return;
   const m = b.dataset.m; closeMenu();
   if (m === 'who') { S.manage = false; showWho(); }
-  if (m === 'sync') { LS.del('trend'); try { await ensureToken(true); sync(); } catch (err) { toast(authError(err)); } }
+  if (m === 'sync') { LS.del('trend'); try { await ensureToken(true); sync(true); } catch (err) { toast(authError(err)); } }
   if (m === 'link') { copy(configLink()); toast('Enlace copiado. Ábrelo en tu tablet o en otro móvil y quedará configurado.'); }
   if (m === 'settings') showSetup();
   if (m === 'exitdemo') location.href = location.pathname;
