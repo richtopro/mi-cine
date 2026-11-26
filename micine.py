@@ -726,6 +726,8 @@ class Handler(BaseHTTPRequestHandler):
         u = self.user()
         if not u:
             return self.err(401, 'sesión requerida')
+        if ep == 'token':
+            return self.send(200, {'token': self.token()})
         if ep == 'me':
             return self.send(200, {'user': {'id': u['id'], 'username': u['username'], 'admin': bool(u['admin'])}})
         if ep == 'library':

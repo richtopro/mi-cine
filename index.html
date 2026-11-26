@@ -101,6 +101,15 @@ main{padding-bottom:calc(76px + env(safe-area-inset-bottom));min-height:100vh}
 .t10corner .t10{border-radius:0 0 0 3px;width:22px;height:25px;font-size:7px}
 .t10corner .t10 b{font-size:11px}
 
+/* ---------- Android TV / mando ---------- */
+.tv :focus{outline:3px solid #fff;outline-offset:2px}
+.tv .card:focus,.tv .item:focus .card{outline:3px solid #fff;outline-offset:0;transform:scale(1.07);z-index:5}
+.tv .item:focus{outline:none}
+.tv .ep:focus{outline:3px solid #fff;background:#2a2a2a}
+.tv .prof:focus .av{border-color:#fff;transform:scale(1.08)}
+.tv .prof:focus{outline:none}
+.tv .btn:focus{outline:3px solid #fff;outline-offset:3px}
+.tv .arr{display:none!important}
 .arr{display:none}
 @media (hover:hover) and (pointer:fine){
   .arr{display:grid;place-items:center;position:absolute;bottom:8px;z-index:6;width:44px;border:0;background:rgba(20,20,20,.72);color:#fff;font-size:34px;cursor:pointer;opacity:0;transition:opacity .2s,background .2s}
@@ -459,6 +468,7 @@ function pdata(pid = S.profile?.id){
 
 function showWho(){
   show('who');
+  if (TV) setTimeout(() => { const f = $('#profiles .prof'); f && focusEl(f); }, 80);
   const box = $('#profiles');
   const needConnect = !S.demo && !S.server && !S.token && !S.stats.profiles.length;
   $('#connectBtn').classList.toggle('hidden', !needConnect);
@@ -849,7 +859,7 @@ async function enterApp(){
   show('app');
   $('#myAvatar').style.background = S.profile.color;
   $('#myAvatar').textContent = S.profile.name[0].toUpperCase();
-  if (S.server) { setTab('home'); return srvLoadLibrary(); }
+  if (S.server) { setTab('home'); if (TV) setTimeout(() => { const b = $('#view .hero .btn.play') || $('#view .card'); b && focusEl(b); }, 150); return srvLoadLibrary(); }
   if (!S.demo) buildLibrary();
   setTab('home');
   if (S.demo) return;
@@ -1112,6 +1122,7 @@ function render(){
     v.innerHTML = `<div style="height:90px"></div><div class="empty">${syncing ? '<div class="spin" style="margin:0 auto 14px;width:28px;height:28px"></div>Preparando tu biblioteca…<br>La primera vez puede tardar un poco.' : 'Aún no hay nada por aquí.<br>Sube vídeos a tu Google Drive y pulsa «Actualizar biblioteca» en el menú.'}</div>`;
     return;
   }
+  const keep = TV ? focusKey() : null;
   if (S.tab === 'home') v.innerHTML = homeHtml();
   else if (S.tab === 'tv' || S.tab === 'movie') v.innerHTML = typeHtml(S.tab);
   else if (S.tab === 'mylist') v.innerHTML = listHtml();
@@ -1119,6 +1130,7 @@ function render(){
   window.scrollTo(0, y);
   decorateRows();
   startHeroTrailer();
+  if (TV) restoreFocus(keep);
 }
 function homeHtml(){
   const [hero, label] = pickHero();
@@ -1281,6 +1293,7 @@ async function play(key, fileId){
   const it = S.byKey[key]; if (!it) return;
   const file = (it.eps || it.files).find(f => f.id === fileId) || it.main || it.files[0];
   if (S.demo) { toast('En la demo no hay vídeos reales. Conecta tu Drive para reproducir 🙂'); return; }
+  if (window.MiCineAndroid && S.server) return appPlay(it, file);
   if (!S.server) { try { await ensureToken(true, 20 * 60e3); } catch (e) { toast(authError(e)); return; } }
   S.cur = { it, file, srcIdx: 0, started: false, counted: false, lastSave: 0, iframe: false };
   const p = $('#player');
@@ -1434,6 +1447,7 @@ $('#menuBtn').onclick = () => {
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
     <button data-m="trailers">${ICON.play} Tráilers en portada: ${LS.get('noTrailers') ? 'no' : 'sí'}</button>
     <button data-m="pass">${ICON.user} Cambiar mi contraseña</button>
+    ${window.MiCineAndroid ? `<button data-m="server">${ICON.link} Cambiar dirección del servidor</button>` : ''}
     <button data-m="srvlogout">${ICON.out} Cerrar sesión (${esc(S.user?.username || '')})</button>` : `
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
     <button data-m="link">${ICON.link} Copiar enlace para otro dispositivo</button>
@@ -1447,6 +1461,7 @@ $('#menu').addEventListener('click', async e => {
   if (m === 'who') { S.manage = false; showWho(); }
   if (m === 'admin') return openAdmin();
   if (m === 'pass') return changePassword();
+  if (m === 'server') { try { MiCineAndroid.changeServer(); } catch {} return; }
   if (m === 'trailers') { LS.get('noTrailers') ? LS.del('noTrailers') : LS.set('noTrailers', true); stopHeroTrailer(); render(); return; }
   if (m === 'srvlogout') { try { await api('logout', { method: 'POST', body: {} }); } catch {} LS.del('srvToken'); location.reload(); return; }
   if (m === 'sync' && S.server) { if (S.user?.admin) { try { await api('admin/scan', { method: 'POST', body: {} }); toast('Escaneando en el servidor… Verás el progreso en el panel.'); } catch (err) { toast(err.message); } } else srvLoadLibrary(true, true); return; }
@@ -1766,6 +1781,104 @@ async function renderAdmin(){
     } catch (e) { toast(e.message); }
   });
 }
+
+/* =========================================================
+   App de Android / Android TV: reproductor nativo y mando a distancia
+   ========================================================= */
+const TV = !!window.MiCineAndroid;
+if (TV) document.documentElement.classList.add('tv');
+async function appPlay(it, file){
+  stopHeroTrailer();
+  const pr = pdata().progress[file.id];
+  const resumeAt = pr && pr.d && pr.t / pr.d > 0.02 && pr.t / pr.d < 0.92 ? pr.t : 0;
+  let tok = LS.get('srvToken', '');
+  if (!tok) { try { tok = (await api('token')).token; LS.set('srvToken', tok); } catch {} }
+  const url = new URL(`stream/${file.id}?t=${encodeURIComponent(tok)}`, location.href).href;
+  const eps = it.eps || []; const i = eps.findIndex(e => e.id === file.id);
+  pdata().last[it.key] = file.id; saveStats();
+  MiCineAndroid.play(JSON.stringify({ url, title: it.title, subtitle: it.type === 'tv' ? `T${file.season}:E${file.episode}` : '',
+    start: Math.floor(resumeAt), fileId: file.id, key: it.key, hasNext: i >= 0 && !!eps[i + 1] }));
+}
+window.miCineProgress = (fileId, key, pos, dur, ended, next) => {
+  const it = S.byKey[key]; if (!it) return;
+  if (dur > 0) {
+    const d = pdata();
+    d.progress[fileId] = { t: ended ? dur : pos, d: dur, at: Date.now(), k: key };
+    if (ended || pos / dur > 0.5) d.views[key] = (d.views[key] || 0) + 1;
+    saveStats();
+  }
+  render(); if (S.detail && !S.detail.admin) renderDetail(true);
+  if (ended && next && it.eps) { const i = it.eps.findIndex(e => e.id === fileId); const n = it.eps[i + 1]; if (n) setTimeout(() => play(key, n.id), 600); }
+};
+window.miCineBack = () => {
+  if (!$('#menu').classList.contains('hidden')) { closeMenu(); return true; }
+  if (S.detail) { closeDetail(); return true; }
+  if (!$('#app').classList.contains('hidden') && S.tab !== 'home') { setTab('home'); return true; }
+  return false;
+};
+function focusables(){
+  const scope = !$('#menu').classList.contains('hidden') ? $('#menu') : !$('#sheet').classList.contains('hidden') ? $('#sheet') : document;
+  return [...scope.querySelectorAll('button, a[href], input, select, .card, .top10 .item, .ep, .prof')].filter(el => {
+    if (el.classList.contains('card') && el.parentElement.classList.contains('item')) return false;
+    if (el.closest('.hidden') || el.disabled) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).opacity !== '0';
+  });
+}
+function focusEl(el){
+  if (!el) return;
+  if (!el.matches('button, a[href], input, select, textarea')) el.setAttribute('tabindex', '-1');
+  el.focus({ preventScroll: true });
+  const sc = el.closest('.scroller');
+  if (sc) { const r = el.getBoundingClientRect(), s = sc.getBoundingClientRect(); if (r.left < s.left + 20 || r.right > s.right - 20) sc.scrollBy({ left: r.left - s.left - 40, behavior: 'smooth' }); }
+  const r = el.getBoundingClientRect(), top = el.closest('#sheet') ? 0 : 70;
+  if (r.top < top || r.bottom > innerHeight - 10) {
+    const box = el.closest('#sheet') || el.closest('#menu .menu-inner');
+    if (box) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    else window.scrollBy({ top: r.top - innerHeight / 2 + r.height / 2, behavior: 'smooth' });
+  }
+}
+function moveFocus(dx, dy){
+  const els = focusables(); const cur = document.activeElement;
+  if (!cur || cur === document.body || !els.includes(cur)) {
+    return focusEl(els.find(el => el.getBoundingClientRect().top >= 60) || els[0]);
+  }
+  const c = cur.getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2;
+  let best = null, bestScore = Infinity;
+  for (const el of els) {
+    if (el === cur || el.contains(cur) || cur.contains(el)) continue;
+    const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2, ddx = x - cx, ddy = y - cy;
+    if (dx && (Math.sign(ddx) !== dx || Math.abs(ddx) < 8)) continue;
+    if (dy && (Math.sign(ddy) !== dy || Math.abs(ddy) < 8)) continue;
+    if (dx && Math.abs(ddy) > Math.max(c.height, r.height)) continue; // horizontal: misma fila
+    const score = dx ? Math.abs(ddx) + Math.abs(ddy) * 3 : Math.abs(ddy) + Math.abs(ddx) * 0.6;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) focusEl(best);
+}
+function focusKey(){
+  const f = document.activeElement; if (!f || f === document.body) return null;
+  const sel = f.dataset.k ? `[data-k="${CSS.escape(f.dataset.k)}"]` : f.id ? '#' + CSS.escape(f.id) : null;
+  if (!sel) return null;
+  const sec = f.closest('.row'); const rows = [...document.querySelectorAll('#view .row')];
+  return { sel, row: sec ? rows.indexOf(sec) : -1 };
+}
+function restoreFocus(k){
+  if (!k) return;
+  const rows = [...document.querySelectorAll('#view .row')];
+  const el = (k.row >= 0 && rows[k.row]?.querySelector(k.sel)) || document.querySelector('#view ' + k.sel);
+  if (el) focusEl(el);
+}
+if (TV) document.addEventListener('keydown', e => {
+  const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  const t = e.target;
+  if (dirs[e.key]) {
+    if ((t.tagName === 'INPUT' && t.type !== 'checkbox' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) || t.tagName === 'SELECT') return;
+    e.preventDefault(); moveFocus(...dirs[e.key]);
+  } else if ((e.key === 'Enter' || e.key === ' ') && t !== document.body && !t.matches('button, a[href], input, select, textarea')) {
+    e.preventDefault(); t.click();
+  }
+});
 
 boot();
 </script>
