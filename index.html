@@ -159,14 +159,41 @@ select{background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:4px;pad
 .menu-inner button:active{background:#333}
 .menu-inner .hd{padding:12px 20px;color:var(--mut);font-size:13px;border-bottom:1px solid #333;margin-bottom:4px}
 
+/* ---------- panel de administración ---------- */
+.adm{padding:calc(env(safe-area-inset-top) + 56px) 16px 30px}
+.adm h1{margin:0 0 4px;font-size:24px}
+.adm h3{margin:22px 0 8px;font-size:16px;color:#ddd}
+.adm .boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.adm .bx{background:#222;border-radius:8px;padding:12px}
+.adm .bx b{display:block;font-size:22px}
+.adm .bx span{font-size:12px;color:var(--mut)}
+.urow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:#222;border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.urow .nm{flex:1;min-width:120px;font-weight:700}
+.urow .nm small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+.mini{background:#333;border:0;border-radius:5px;padding:7px 10px;font-size:13px;color:#fff}
+.mini.danger{background:#5a1a1a}
+.mini.ok{background:#1d5a32}
+.adm input[type=text],.adm input[type=password],.fld{width:100%;background:#333;border:1px solid #555;border-radius:6px;color:#fff;padding:11px;font-size:15px;margin-bottom:8px}
+.chk{display:flex;align-items:center;gap:8px;font-size:14px;margin:4px 0 10px}
+.bar{height:6px;background:#333;border-radius:3px;overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;background:var(--red);transition:width .4s}
+
 /* ---------- reproductor ---------- */
 #player{position:fixed;inset:0;z-index:70;background:#000;display:flex;align-items:center;justify-content:center}
 #player video,#player iframe{width:100%;height:100%;border:0;background:#000}
 .pbar{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 8px) 12px 22px;background:linear-gradient(#000c,transparent);z-index:2;transition:opacity .3s}
 .pbar .ttl{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pbar .ttl small{color:#bbb;font-weight:400;margin-left:6px}
-#player.idle .pbar{opacity:0;pointer-events:none}
-.pnext{position:absolute;right:16px;bottom:calc(env(safe-area-inset-bottom) + 70px);z-index:3}
+#player.idle .pbar,#player.idle .tcbar{opacity:0;pointer-events:none}
+.tcbar{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:26px 14px calc(env(safe-area-inset-bottom) + 10px);background:linear-gradient(transparent,#000d);transition:opacity .3s}
+.tcbar input[type=range]{width:100%;accent-color:var(--red);height:22px;margin:0 0 6px}
+.tcrow{display:flex;align-items:center;gap:6px}
+.tcrow button{background:none;border:0;color:#fff;font-size:14px;font-weight:700;padding:6px 8px;display:flex;align-items:center;gap:4px}
+.tcrow .tt{font-size:13px;color:#ddd;margin-left:4px;white-space:nowrap}
+.tcrow .sp{flex:1}
+.tcrow select{max-width:44vw;font-size:13px;padding:5px 6px;background:#222c}
+.pnext{position:absolute;right:16px;bottom:calc(env(safe-area-inset-bottom) + 70px);z-index:4}
+#player.tc .pnext,#player.tc .pswitch{bottom:calc(env(safe-area-inset-bottom) + 110px)}
 .pmsg{position:absolute;inset:0;margin:auto;height:max-content;max-width:340px;background:#181818ee;border-radius:10px;padding:20px;text-align:center;z-index:4;font-size:15px;line-height:1.45}
 .pmsg .btn{margin-top:12px}
 .pswitch{position:absolute;left:12px;bottom:calc(env(safe-area-inset-bottom) + 70px);z-index:3;font-size:12px;padding:7px 12px!important}
@@ -209,6 +236,20 @@ select{background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:4px;pad
     <button class="btn red big" id="saveCfg">Guardar y continuar</button>
     <div style="text-align:center"><button class="link" id="tryDemo">Ver una demo sin configurar nada</button></div>
   </div>
+</section>
+
+<!-- Inicio de sesión (modo servidor) -->
+<section id="login" class="screen hidden">
+  <div class="logo">Mi Cine</div>
+  <form class="panel" id="loginForm" autocomplete="on">
+    <h2>Iniciar sesión</h2>
+    <label for="lu">Usuario</label>
+    <input id="lu" name="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
+    <label for="lp">Contraseña</label>
+    <input id="lp" name="password" type="password" autocomplete="current-password" required>
+    <div class="err" id="loginErr"></div>
+    <button class="btn red big" type="submit">Entrar</button>
+  </form>
 </section>
 
 <!-- Perfiles -->
@@ -327,6 +368,7 @@ async function boot(){
   S.cfg = Object.assign({}, window.MI_CINE_CONFIG || {}, LS.get('cfg', {}));
   const qs = new URLSearchParams(location.search);
   if (window.FORCE_DEMO || qs.has('demo')) return startDemo();
+  if (window.MI_CINE_SERVER) return serverBoot();
   if (!S.cfg.googleClientId || !S.cfg.tmdbKey) return showSetup();
   registerSW();
   const t = sessionStorage.getItem('mc_token');
@@ -352,7 +394,7 @@ function importHashConfig(){
 }
 
 function show(id){
-  for (const s of ['setup','who','app']) $('#'+s).classList.toggle('hidden', s !== id);
+  for (const s of ['setup','login','who','app']) $('#'+s).classList.toggle('hidden', s !== id);
   window.scrollTo(0, 0);
 }
 
@@ -402,7 +444,7 @@ function pdata(pid = S.profile?.id){
 function showWho(){
   show('who');
   const box = $('#profiles');
-  const needConnect = !S.demo && !S.token && !S.stats.profiles.length;
+  const needConnect = !S.demo && !S.server && !S.token && !S.stats.profiles.length;
   $('#connectBtn').classList.toggle('hidden', !needConnect);
   $('#manageBtn').classList.toggle('hidden', needConnect || !S.stats.profiles.length);
   $('#who').classList.toggle('manage', S.manage);
@@ -426,7 +468,7 @@ $('#profiles').onclick = async e => {
   if (S.manage) return editProfile(S.stats.profiles.find(p => p.id === pid));
   S.profile = S.stats.profiles.find(p => p.id === pid);
   LS.set('lastProfile', pid);
-  if (!S.demo) {
+  if (!S.demo && !S.server) {
     try { await ensureToken(true); } catch (err) { $('#whoErr').textContent = authError(err); return; }
   }
   enterApp();
@@ -569,6 +611,7 @@ function saveStats(){
   LS.set('stats', S.stats);
   if (S.demo) return;
   clearTimeout(saveTimer);
+  if (S.server) { saveTimer = setTimeout(srvSaveStats, 3000); return; }
   saveTimer = setTimeout(saveStatsRemote, 6000);
 }
 async function findStatsFile(){
@@ -614,7 +657,10 @@ async function saveStatsRemote(){
     }
   } catch (e) { console.warn('guardar stats', e); }
 }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveStatsRemote(); } });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && saveTimer) { clearTimeout(saveTimer); saveTimer = null; S.server ? srvSaveStats(true) : saveStatsRemote(); }
+  if (document.visibilityState === 'visible' && S.server && S.profile && !$('#app').classList.contains('hidden')) srvLoadLibrary(true);
+});
 
 /* =========================================================
    TMDB
@@ -682,6 +728,7 @@ async function lookup(g){
 async function seasonInfo(tvId, n){
   const k = tvId + ':' + n;
   if (S.seasons[k]) return S.seasons[k];
+  if (S.server) { try { return S.seasons[k] = await api(`season?tv=${tvId}&s=${n}`); } catch { return null; } }
   try { const r = await tmdb(`/tv/${tvId}/season/${n}`); S.seasons[k] = r; return r; } catch { return null; }
 }
 
@@ -786,6 +833,7 @@ async function enterApp(){
   show('app');
   $('#myAvatar').style.background = S.profile.color;
   $('#myAvatar').textContent = S.profile.name[0].toUpperCase();
+  if (S.server) { setTab('home'); return srvLoadLibrary(); }
   if (!S.demo) buildLibrary();
   setTab('home');
   if (S.demo) return;
@@ -1065,6 +1113,7 @@ function nextUp(it){
   return { file: f, label: frac > 0.02 && frac < 0.92 ? 'Reanudar' : 'Reproducir', frac };
 }
 function renderDetail(keepScroll){
+  if (!S.detail || S.detail.admin) return;
   const it = S.byKey[S.detail.key];
   const sh = $('#sheet'); const st = sh.scrollTop;
   const year = it.d ? it.d.slice(0, 4) : '';
@@ -1114,6 +1163,7 @@ function renderDetail(keepScroll){
   if (sel) sel.onchange = async () => { S.detail.season = +sel.value; renderDetail(true); if (it.tmdbId && !S.demo) { await seasonInfo(it.tmdbId, S.detail.season); renderDetail(true); } };
 }
 function closeDetail(fromPop){
+  clearTimeout(admTimer);
   if (fromPop !== true && history.state?.mc === 'd') return history.back();
   $('#sheet').classList.add('hidden'); $('#sheet').innerHTML = ''; document.body.classList.remove('lock'); S.detail = null; }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeDetail(); });
@@ -1136,7 +1186,7 @@ async function play(key, fileId){
   const it = S.byKey[key]; if (!it) return;
   const file = (it.eps || it.files).find(f => f.id === fileId) || it.main || it.files[0];
   if (S.demo) { toast('En la demo no hay vídeos reales. Conecta tu Drive para reproducir 🙂'); return; }
-  try { await ensureToken(true, 20 * 60e3); } catch (e) { toast(authError(e)); return; }
+  if (!S.server) { try { await ensureToken(true, 20 * 60e3); } catch (e) { toast(authError(e)); return; } }
   S.cur = { it, file, srcIdx: 0, started: false, counted: false, lastSave: 0, iframe: false };
   const p = $('#player');
   const sub = it.type === 'tv' ? `T${file.season}:E${file.episode}` : '';
@@ -1149,22 +1199,24 @@ async function play(key, fileId){
   const v = $('#vid');
   const pr = pdata().progress[file.id];
   const resumeAt = pr && pr.d && pr.t / pr.d > 0.02 && pr.t / pr.d < 0.92 ? pr.t : 0;
-  v.addEventListener('loadedmetadata', () => { if (resumeAt && !S.cur.started) v.currentTime = resumeAt; }, { once: true });
+  v.addEventListener('loadedmetadata', () => { if (resumeAt && !S.cur.started && !S.cur.tc) v.currentTime = resumeAt; }, { once: true });
+  if (S.server) $('#pSwitch').textContent = '¿No se ve bien? Abrir en otro reproductor';
   v.addEventListener('playing', () => { S.cur.started = true; setTimeout(() => S.cur && !S.cur.iframe && $('#pSwitch')?.classList.remove('hidden'), 1500); setTimeout(() => $('#pSwitch')?.classList.add('hidden'), 12000); });
   v.addEventListener('timeupdate', onTime);
   v.addEventListener('ended', onEnded);
   v.addEventListener('error', onVideoError);
   v.addEventListener('loadeddata', () => { if (v.videoWidth === 0 && v.duration > 0) $('#pSwitch')?.classList.remove('hidden'); });
   $('#pBack').onclick = closePlayer;
-  $('#pSwitch').onclick = () => useIframe('Usando el reproductor de Google Drive.');
+  $('#pSwitch').onclick = () => S.server ? srvCantPlay(true) : useIframe('Usando el reproductor de Google Drive.');
   $('#pNext').onclick = () => playNext();
   p.onpointermove = p.ontouchstart = () => { p.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => p.classList.add('idle'), 3500); };
   p.onpointermove();
-  setSource();
+  if (S.server) srvStart(resumeAt); else setSource();
   try { await (p.requestFullscreen?.() || p.webkitRequestFullscreen?.()); await screen.orientation?.lock?.('landscape'); } catch {}
   pdata().last[it.key] = file.id; saveStats();
 }
 function sources(id){
+  if (S.server) return [`stream/${id}`];
   const list = [];
   if (navigator.serviceWorker?.controller) list.push(`./drive-stream/${id}?t=${encodeURIComponent(S.token)}`);
   list.push(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true&access_token=${encodeURIComponent(S.token)}`);
@@ -1173,6 +1225,7 @@ function sources(id){
 function setSource(at){
   const v = $('#vid'); if (!v) return;
   const src = sources(S.cur.file.id)[S.cur.srcIdx];
+  if (!src && S.server) return srvCantPlay();
   if (!src) return useIframe('Este formato no se puede reproducir directamente en tu navegador. Uso el reproductor de Google Drive.');
   v.src = src;
   if (at) v.addEventListener('loadedmetadata', () => { v.currentTime = at; }, { once: true });
@@ -1180,6 +1233,17 @@ function setSource(at){
 }
 function onVideoError(){
   const v = $('#vid'); if (!S.cur || !v) return;
+  if (S.cur.tc) {
+    if (!S.cur.started) return srvCantPlay();
+    const at = vpos(v);
+    pmsg(`Se ha cortado la conexión con el servidor.<br><button class="btn play">${ICON.play}Continuar</button>`, () => tcSeek(at));
+    return;
+  }
+  if (S.cur.started && S.server) {
+    const at = v.currentTime;
+    pmsg(`Se ha cortado la conexión con el servidor.<br><button class="btn play">${ICON.play}Continuar</button>`, () => setSource(at));
+    return;
+  }
   if (S.cur.started) {
     // probablemente ha caducado la sesión a mitad de película
     const at = v.currentTime;
@@ -1206,24 +1270,30 @@ function useIframe(msg){
   if (!S.cur.counted) { S.cur.counted = true; const d = pdata(); d.views[S.cur.it.key] = (d.views[S.cur.it.key] || 0) + 1; saveStats(); }
   if (S.cur.it.type === 'tv' && nextEp()) $('#pNext').classList.remove('hidden');
 }
+const vpos = v => S.cur?.tc ? S.cur.tc.offset + v.currentTime : v.currentTime;
+const vdur = v => S.cur?.tc ? S.cur.tc.dur : v.duration;
 function onTime(){
-  const v = $('#vid'); const c = S.cur; if (!v || !c || !v.duration || !isFinite(v.duration)) return;
+  const v = $('#vid'); const c = S.cur; if (!v || !c) return;
+  if (c.tc) tcUpdate();
+  const D = vdur(v), P = vpos(v);
+  if (!D || !isFinite(D)) return;
   const now = Date.now();
-  const frac = v.currentTime / v.duration;
+  const frac = P / D;
   if (now - c.lastSave > 5000) {
     c.lastSave = now;
-    pdata().progress[c.file.id] = { t: Math.round(v.currentTime), d: Math.round(v.duration), at: now, k: c.it.key };
+    pdata().progress[c.file.id] = { t: Math.round(P), d: Math.round(D), at: now, k: c.it.key };
     if (!c.counted && frac > 0.5) { c.counted = true; const d = pdata(); d.views[c.it.key] = (d.views[c.it.key] || 0) + 1; }
     saveStats();
   }
   const nb = $('#pNext');
-  if (nb && c.it.type === 'tv') nb.classList.toggle('hidden', !(nextEp() && (v.duration - v.currentTime < 90 || frac > 0.95)));
+  if (nb && c.it.type === 'tv') nb.classList.toggle('hidden', !(nextEp() && (D - P < 90 || frac > 0.95)));
 }
 function nextEp(){ const c = S.cur; if (!c?.it.eps) return null; const i = c.it.eps.findIndex(e => e.id === c.file.id); return c.it.eps[i + 1] || null; }
 function onEnded(){
   const c = S.cur; if (!c) return;
   const v = $('#vid');
-  pdata().progress[c.file.id] = { t: Math.round(v.duration), d: Math.round(v.duration), at: Date.now(), k: c.it.key }; saveStats();
+  const D = Math.round(vdur(v) || 0);
+  pdata().progress[c.file.id] = { t: D, d: D, at: Date.now(), k: c.it.key }; saveStats();
   const n = nextEp();
   if (!n) return closePlayer();
   let s = 5;
@@ -1251,7 +1321,11 @@ $('#menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMen
 $('#menuBtn').onclick = () => {
   openMenu(`<div class="hd">${esc(S.profile.name)} · ${S.items.length} títulos${S.others.length ? ` · ${S.others.length} otros vídeos` : ''}</div>
     <button data-m="who">${ICON.user} Cambiar de perfil</button>
-    ${S.demo ? `<button data-m="exitdemo">${ICON.out} Salir de la demo</button>` : `
+    ${S.demo ? `<button data-m="exitdemo">${ICON.out} Salir de la demo</button>` : S.server ? `
+    ${S.user?.admin ? `<button data-m="admin">${ICON.gear} Panel de administración</button>` : ''}
+    <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
+    <button data-m="pass">${ICON.user} Cambiar mi contraseña</button>
+    <button data-m="srvlogout">${ICON.out} Cerrar sesión (${esc(S.user?.username || '')})</button>` : `
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
     <button data-m="link">${ICON.link} Copiar enlace para otro dispositivo</button>
     <button data-m="settings">${ICON.gear} Ajustes (claves y carpeta)</button>
@@ -1261,6 +1335,10 @@ $('#menu').addEventListener('click', async e => {
   const b = e.target.closest('[data-m]'); if (!b) return;
   const m = b.dataset.m; closeMenu();
   if (m === 'who') { S.manage = false; showWho(); }
+  if (m === 'admin') return openAdmin();
+  if (m === 'pass') return changePassword();
+  if (m === 'srvlogout') { try { await api('logout', { method: 'POST', body: {} }); } catch {} LS.del('srvToken'); location.reload(); return; }
+  if (m === 'sync' && S.server) { if (S.user?.admin) { try { await api('admin/scan', { method: 'POST', body: {} }); toast('Escaneando en el servidor… Verás el progreso en el panel.'); } catch (err) { toast(err.message); } } else srvLoadLibrary(true, true); return; }
   if (m === 'sync') { LS.del('trend'); try { await ensureToken(true); sync(true); } catch (err) { toast(authError(err)); } }
   if (m === 'link') { copy(configLink()); toast('Enlace copiado. Ábrelo en tu tablet o en otro móvil y quedará configurado.'); }
   if (m === 'settings') showSetup();
@@ -1335,6 +1413,245 @@ function startDemo(){
   };
   showWho();
   toast('Modo demo: títulos inventados');
+}
+
+/* =========================================================
+   Modo servidor (Mi Cine instalado en Ultra.cc u otro servidor)
+   ========================================================= */
+async function api(path, opts = {}){
+  const init = { method: opts.method || 'GET', headers: {}, credentials: 'same-origin' };
+  if (opts.body !== undefined) { init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify(opts.body); }
+  if (opts.keepalive) init.keepalive = true;
+  const r = await fetch('api/' + path, init);
+  let data = null; try { data = await r.json(); } catch {}
+  if (r.status === 401 && path !== 'login') { if (!$('#app').classList.contains('hidden') || !$('#who').classList.contains('hidden')) showLogin('Tu sesión ha caducado. Vuelve a entrar.'); throw new Error('Sesión caducada'); }
+  if (!r.ok) throw new Error(data?.error || ('Error ' + r.status));
+  return data;
+}
+async function serverBoot(){
+  S.server = true;
+  try { const me = await api('me'); await serverAfterLogin(me.user); }
+  catch { showLogin(); }
+}
+function showLogin(msg){
+  show('login');
+  $('#loginErr').textContent = msg || '';
+  setTimeout(() => $('#lu').focus(), 50);
+}
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault();
+  const err = $('#loginErr'); err.textContent = 'Entrando…';
+  try {
+    const r = await api('login', { method: 'POST', body: { username: $('#lu').value.trim(), password: $('#lp').value } });
+    LS.set('srvToken', r.token);
+    $('#lp').value = ''; err.textContent = '';
+    await serverAfterLogin(r.user);
+  } catch (ex) { err.textContent = ex.message; }
+};
+async function serverAfterLogin(user){
+  S.user = user;
+  let st = null; try { st = await api('stats'); } catch {}
+  S.stats = st && st.profiles ? st : (LS.get('stats', null) || newStats());
+  if (!S.stats.profiles.length) addProfile(user.username);
+  showWho();
+}
+let srvSaving = false;
+async function srvSaveStats(keepalive){
+  if (srvSaving && !keepalive) { clearTimeout(saveTimer); saveTimer = setTimeout(srvSaveStats, 2000); return; }
+  srvSaving = true;
+  try { await api('stats', { method: 'PUT', body: S.stats, keepalive: !!keepalive }); } catch (e) { console.warn('stats', e); }
+  finally { srvSaving = false; }
+}
+function srvExpand(d){
+  const iso = s => new Date(s * 1000).toISOString();
+  const fix = it => {
+    if (it.e) { it.eps = it.e.map(([id, s, e, c]) => ({ id, season: s, episode: e, c: iso(c), d: 0, th: '' })); it.seasons = [...new Set(it.eps.map(x => x.season))]; it.files = it.eps; delete it.e; }
+    if (it.f) { it.files = it.f.map(([id, n, s, c]) => ({ id, n, s, c: iso(c), d: 0 })); it.main = it.files[0]; delete it.f; }
+    return it;
+  };
+  S.items = d.items.map(fix); S.others = d.others.map(fix);
+  S.byKey = {}; for (const it of S.items.concat(S.others)) S.byKey[it.key] = it;
+  S.trending = d.trending || []; S.genres = { map: d.genres || {} };
+  S.libVersion = d.version;
+}
+let srvLoading = false;
+async function srvLoadLibrary(quiet, loud){
+  if (srvLoading) return; srvLoading = true;
+  try {
+    if (!S.libVersion) {
+      const cached = await DB.get('srvlib', null);
+      if (cached) { srvExpand(cached); render(); }
+    }
+    if (!S.items.length && !quiet) toast('Cargando tu biblioteca…', true);
+    const d = await api('library' + (S.libVersion ? '?v=' + S.libVersion : ''));
+    if (!d.same) {
+      const before = S.items.length;
+      await DB.set('srvlib', d);
+      srvExpand(JSON.parse(JSON.stringify(d)));
+      render(); if (S.detail) renderDetail(true);
+      const n = S.items.length - before;
+      if (before && n > 0) toast(`${n} título${n > 1 ? 's' : ''} nuevo${n > 1 ? 's' : ''} en tu biblioteca`);
+      else if (!quiet || loud) toast(`${S.items.length} títulos en tu biblioteca`);
+    } else { if (loud) toast('Ya está todo al día'); else $('#toast').classList.add('hidden'); }
+  } catch (e) { if (!String(e.message).includes('caducada')) toast('No se pudo cargar la biblioteca: ' + e.message); }
+  finally { srvLoading = false; }
+}
+function srvCantPlay(manual){
+  const url = new URL(`api/../stream/${S.cur.file.id}?t=${encodeURIComponent(LS.get('srvToken', ''))}`, location.href).href;
+  const title = S.cur.it.title;
+  const android = `intent:${url}#Intent;action=android.intent.action.VIEW;type=video/*;S.title=${encodeURIComponent(title)};end`;
+  const vlcIos = `vlc-x-callback://x-callback-url/stream?url=${encodeURIComponent(url)}`;
+  const isAndroid = /Android/i.test(navigator.userAgent), isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  pmsg(`${manual ? '' : 'Tu navegador no puede reproducir este formato.<br>'}Ábrelo en un reproductor como VLC:<br>
+    ${isAndroid ? `<a class="btn play" href="${esc(android)}">${ICON.play}Abrir en otra app</a>` : isIOS ? `<a class="btn play" href="${esc(vlcIos)}">${ICON.play}Abrir en VLC</a>` : ''}
+    <button class="btn sec" style="margin-top:10px">Copiar enlace del vídeo</button>
+    <div class="small" style="margin-top:10px">En Android TV se verá todo en la app de Mi Cine.</div>`, () => copy(url));
+}
+/* reproducción con audio convertido en el servidor (AC3/DTS → AAC) y barra propia */
+const NO_MKV = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Safari/.test(navigator.userAgent) && !/Chrome|Chromium|Android|Edg/.test(navigator.userAgent));
+async function srvStart(resumeAt){
+  const c = S.cur; let pr = null;
+  try { pr = await api('probe?id=' + encodeURIComponent(c.file.id) + (NO_MKV ? '&mkv=0' : '')); } catch {}
+  if (S.cur !== c) return;
+  if (pr && pr.transcode) {
+    c.tc = { dur: pr.duration, offset: Math.max(0, Math.floor(resumeAt || 0)), audio: pr.audio_index, tracks: pr.audio, drag: false };
+    tcSetup(); tcLoad();
+  } else {
+    if (pr && pr.audio?.length > 1 && pr.ffmpeg) c.plan = pr;
+    setSource();
+  }
+}
+const fmtT = s => { s = Math.max(0, Math.floor(s || 0)); const hh = Math.floor(s / 3600), mm = Math.floor(s % 3600 / 60), ss = s % 60; return (hh ? hh + ':' + String(mm).padStart(2, '0') : mm) + ':' + String(ss).padStart(2, '0'); };
+function tcSetup(){
+  const c = S.cur, v = $('#vid'), p = $('#player');
+  v.controls = false; p.classList.add('tc');
+  const bar = document.createElement('div'); bar.className = 'tcbar';
+  bar.innerHTML = `<input type="range" id="tcRange" min="0" max="${Math.floor(c.tc.dur)}" step="1" value="${c.tc.offset}">
+    <div class="tcrow">
+      <button id="tcPlay" aria-label="Reproducir o pausar">${ICON.play}</button>
+      <button id="tcBack" aria-label="Retroceder 10 segundos">−10</button>
+      <button id="tcFwd" aria-label="Avanzar 30 segundos">+30</button>
+      <span class="tt" id="tcTime"></span><span class="sp"></span>
+      ${c.tc.tracks.length > 1 ? `<select id="tcAudio" aria-label="Pista de audio">${c.tc.tracks.map(t => `<option value="${t.index}" ${t.index === c.tc.audio ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>` : ''}
+      <button id="tcFs" aria-label="Pantalla completa"><svg class="i" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7zm-2-4h2V7h3V5H5zm12 7h-3v2h5v-5h-2zM14 5v2h3v3h2V5z"/></svg></button>
+    </div>`;
+  p.appendChild(bar);
+  const r = $('#tcRange');
+  r.oninput = () => { c.tc.drag = true; $('#tcTime').textContent = fmtT(r.value) + ' / ' + fmtT(c.tc.dur); };
+  r.onchange = () => { c.tc.drag = false; tcSeek(+r.value); };
+  $('#tcPlay').onclick = () => v.paused ? v.play() : v.pause();
+  $('#tcBack').onclick = () => tcSeek(vpos(v) - 10);
+  $('#tcFwd').onclick = () => tcSeek(vpos(v) + 30);
+  $('#tcFs').onclick = () => { try { document.fullscreenElement ? document.exitFullscreen() : (p.requestFullscreen?.() || p.webkitRequestFullscreen?.()); } catch {} };
+  if ($('#tcAudio')) $('#tcAudio').onchange = e => { c.tc.audio = +e.target.value; tcSeek(vpos(v)); };
+  v.onclick = () => v.paused ? v.play() : v.pause();
+  v.addEventListener('play', tcUpdate); v.addEventListener('pause', tcUpdate);
+  tcUpdate();
+}
+function tcLoad(){ const c = S.cur, v = $('#vid'); if (!v || !c?.tc) return; v.src = `stream/${c.file.id}?a=${c.tc.audio}&start=${c.tc.offset}`; v.play().catch(() => {}); }
+function tcSeek(sec){
+  const c = S.cur; if (!c?.tc) return;
+  c.tc.offset = Math.max(0, Math.min(Math.floor(sec), Math.floor((c.tc.dur || 1e9) - 3)));
+  $('.pmsg')?.remove(); tcLoad(); tcUpdate();
+}
+function tcUpdate(){
+  const c = S.cur, v = $('#vid'); if (!c?.tc || !v || !$('#tcRange')) return;
+  if (!c.tc.drag) { $('#tcRange').value = Math.floor(vpos(v)); $('#tcTime').textContent = fmtT(vpos(v)) + ' / ' + fmtT(c.tc.dur); }
+  $('#tcPlay').innerHTML = v.paused ? ICON.play : '<svg class="i" viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>';
+}
+document.addEventListener('keydown', e => {
+  if (!S.cur?.tc || $('#player').classList.contains('hidden') || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const v = $('#vid'); if (!v) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); tcSeek(vpos(v) - 10); }
+  if (e.key === 'ArrowRight') { e.preventDefault(); tcSeek(vpos(v) + 30); }
+  if (e.key === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+});
+
+function changePassword(){
+  openMenu(`<div class="hd">Cambiar mi contraseña</div>
+    <div style="padding:8px 20px 0"><input class="fld" id="pwOld" type="password" placeholder="Contraseña actual" autocomplete="current-password">
+    <input class="fld" id="pwNew" type="password" placeholder="Nueva contraseña (mín. 6)" autocomplete="new-password"><div class="err" id="pwErr"></div></div>
+    <button id="pwSave">${ICON.check} Guardar</button>`);
+  $('#pwSave').onclick = async () => {
+    try { await api('password', { method: 'POST', body: { old: $('#pwOld').value, new: $('#pwNew').value } }); closeMenu(); toast('Contraseña cambiada'); }
+    catch (e) { $('#pwErr').textContent = e.message; }
+  };
+}
+
+/* ---------- panel de administración ---------- */
+let admTimer = null;
+async function openAdmin(){
+  const sh = $('#sheet');
+  if (sh.classList.contains('hidden')) pushH('d');
+  S.detail = { admin: true };
+  sh.classList.remove('hidden'); document.body.classList.add('lock');
+  sh.innerHTML = `<div class="sheet-inner"><button class="close" id="closeSheet" aria-label="Cerrar">${ICON.close}</button><div class="adm" id="adm"><div class="empty"><div class="spin" style="margin:auto"></div></div></div></div>`;
+  $('#closeSheet').onclick = closeDetail;
+  await renderAdmin();
+}
+async function renderAdmin(){
+  const box = $('#adm'); if (!box) return;
+  let st, us;
+  try { [st, us] = await Promise.all([api('admin/status'), api('admin/users')]); }
+  catch (e) { box.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+  const last = st.last_scan ? new Date(st.last_scan * 1000).toLocaleString('es-ES') : 'nunca';
+  const pct = st.total ? Math.round(st.done / st.total * 100) : 0;
+  box.innerHTML = `<h1>Panel de administración</h1><p class="small">Usuarios y biblioteca del servidor.</p>
+    <h3>Biblioteca</h3>
+    <div class="boxes"><div class="bx"><b>${st.items}</b><span>títulos</span></div><div class="bx"><b>${st.files}</b><span>vídeos encontrados</span></div><div class="bx"><b style="font-size:14px;padding-top:6px">${esc(last)}</b><span>último escaneo</span></div></div>
+    ${st.scanning ? `<p class="small" style="margin-top:12px">⏳ ${esc(st.phase)}${st.total ? ` · ${st.done}/${st.total}` : ''}</p>${st.total ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}` : `<button class="mini" id="admScan" style="margin-top:12px">${ICON.refresh.replace('class="i"', 'class="i" style="width:16px;height:16px;vertical-align:-3px"')} Escanear ahora</button>`}
+    ${st.error ? `<p class="err">Último error: ${esc(st.error)}</p>` : ''}
+    <h3>Carpetas</h3>
+    ${st.media.map(m => `<div class="urow"><div class="nm">${esc(m.name)}<small>${esc(m.path)}</small></div><span class="small">${m.ok ? '✅ accesible' : '⚠️ no encontrada'}</span></div>`).join('')}
+    <h3>Usuarios (${us.users.length})</h3>
+    ${us.users.map(u => `<div class="urow" data-uid="${u.id}">
+      <div class="nm">${esc(u.username)} ${u.admin ? '<span class="small">· admin</span>' : ''} ${u.disabled ? '<span class="small" style="color:#ff6b6b">· desactivado</span>' : ''}
+        <small>${u.last_login ? 'Última entrada: ' + new Date(u.last_login * 1000).toLocaleDateString('es-ES') : 'Aún no ha entrado'}</small></div>
+      <button class="mini" data-act="pw">Contraseña</button>
+      ${u.id !== S.user.id ? `<button class="mini" data-act="dis">${u.disabled ? 'Activar' : 'Desactivar'}</button>
+      <button class="mini" data-act="adm">${u.admin ? 'Quitar admin' : 'Hacer admin'}</button>
+      <button class="mini danger" data-act="del">Borrar</button>` : '<span class="small">(tú)</span>'}
+      <div class="uextra" style="flex-basis:100%"></div></div>`).join('')}
+    <h3>Añadir usuario</h3>
+    <input type="text" id="nuName" placeholder="Nombre de usuario" autocapitalize="off" autocomplete="off">
+    <input type="password" id="nuPass" placeholder="Contraseña (mín. 6)" autocomplete="new-password">
+    <label class="chk"><input type="checkbox" id="nuAdmin"> Administrador (puede gestionar usuarios)</label>
+    <div class="err" id="nuErr"></div>
+    <button class="btn red" id="nuAdd">${ICON.plus}Añadir usuario</button>`;
+  clearTimeout(admTimer);
+  if (st.scanning) admTimer = setTimeout(() => S.detail?.admin && renderAdmin(), 2500);
+  else if (S.admWasScanning) srvLoadLibrary(true);
+  S.admWasScanning = st.scanning;
+  $('#admScan') && ($('#admScan').onclick = async () => { await api('admin/scan', { method: 'POST', body: {} }); setTimeout(renderAdmin, 800); });
+  $('#nuAdd').onclick = async () => {
+    try {
+      await api('admin/users', { method: 'POST', body: { username: $('#nuName').value.trim(), password: $('#nuPass').value, admin: $('#nuAdmin').checked } });
+      toast('Usuario creado'); renderAdmin();
+    } catch (e) { $('#nuErr').textContent = e.message; }
+  };
+  box.querySelectorAll('[data-act]').forEach(b => b.onclick = async () => {
+    const row = b.closest('[data-uid]'); const uid = row.dataset.uid; const act = b.dataset.act;
+    const u = us.users.find(x => String(x.id) === uid);
+    try {
+      if (act === 'pw') {
+        const ex = row.querySelector('.uextra');
+        ex.innerHTML = `<input type="password" class="fld" placeholder="Nueva contraseña para ${esc(u.username)}" autocomplete="new-password"><button class="mini ok">Guardar contraseña</button>`;
+        ex.querySelector('button').onclick = async () => {
+          try { await api('admin/users/' + uid, { method: 'POST', body: { password: ex.querySelector('input').value } }); toast('Contraseña cambiada'); ex.innerHTML = ''; }
+          catch (e) { toast(e.message); }
+        };
+        ex.querySelector('input').focus();
+        return;
+      }
+      if (act === 'del') {
+        if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '¿Seguro? Toca otra vez'; setTimeout(() => { if (b.isConnected) { delete b.dataset.sure; b.textContent = 'Borrar'; } }, 4000); return; }
+        await api('admin/users/' + uid, { method: 'DELETE' }); toast('Usuario borrado');
+      }
+      if (act === 'dis') await api('admin/users/' + uid, { method: 'POST', body: { disabled: !u.disabled } });
+      if (act === 'adm') await api('admin/users/' + uid, { method: 'POST', body: { admin: !u.admin } });
+      renderAdmin();
+    } catch (e) { toast(e.message); }
+  });
 }
 
 boot();
