@@ -93,6 +93,13 @@ main{padding-bottom:calc(76px + env(safe-area-inset-bottom));min-height:100vh}
 .t10corner .t10{border-radius:0 0 0 3px;width:22px;height:25px;font-size:7px}
 .t10corner .t10 b{font-size:11px}
 
+.arr{display:none}
+@media (hover:hover) and (pointer:fine){
+  .arr{display:grid;place-items:center;position:absolute;bottom:8px;z-index:6;width:44px;border:0;background:rgba(20,20,20,.72);color:#fff;font-size:34px;cursor:pointer;opacity:0;transition:opacity .2s,background .2s}
+  .arr.l{left:0;border-radius:0 6px 6px 0}.arr.r{right:0;border-radius:6px 0 0 6px}
+  .row:hover .arr{opacity:1}.arr:hover{background:rgba(20,20,20,.92)}
+  .arr.off{display:none}
+}
 .top10 .scroller{gap:2px}
 .top10 .item{flex:0 0 auto;display:flex;align-items:flex-end;scroll-snap-align:start;cursor:pointer}
 .top10 .num{font-family:"Arial Black",Impact,sans-serif;font-size:min(30vw,170px);font-weight:900;line-height:.74;color:var(--bg);-webkit-text-stroke:3px #5c5c5c;letter-spacing:-.08em;margin-right:-.13em;position:relative;z-index:0;user-select:none}
@@ -185,6 +192,7 @@ select{background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:4px;pad
 .pbar .ttl{font-weight:700;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pbar .ttl small{color:#bbb;font-weight:400;margin-left:6px}
 #player.idle .pbar,#player.idle .tcbar{opacity:0;pointer-events:none}
+#player.mini{inset:auto;left:-10000px;bottom:0;width:4px;height:4px;opacity:0;pointer-events:none}
 .tcbar{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:26px 14px calc(env(safe-area-inset-bottom) + 10px);background:linear-gradient(transparent,#000d);transition:opacity .3s}
 .tcbar input[type=range]{width:100%;accent-color:var(--red);height:22px;margin:0 0 6px}
 .tcrow{display:flex;align-items:center;gap:6px}
@@ -1007,6 +1015,27 @@ function pickHero(type){
   return [it, `Nº ${pos} en ${it.type === 'tv' ? 'series' : 'películas'} de tu colección`];
 }
 
+function decorateRows(){
+  for (const sc of document.querySelectorAll('#view .row .scroller')) {
+    const row = sc.parentElement;
+    if (row.querySelector('.arr')) continue;
+    const top = sc.offsetTop, hgt = sc.offsetHeight - 8;
+    for (const dir of [-1, 1]) {
+      const b = document.createElement('button');
+      b.className = 'arr ' + (dir < 0 ? 'l' : 'r'); b.type = 'button';
+      b.setAttribute('aria-label', dir < 0 ? 'Anteriores' : 'Siguientes');
+      b.textContent = dir < 0 ? '‹' : '›';
+      b.style.top = top + 'px'; b.style.height = hgt + 'px'; b.style.bottom = 'auto';
+      b.onclick = e => { e.stopPropagation(); sc.scrollBy({ left: dir * sc.clientWidth * 0.85, behavior: 'smooth' }); };
+      row.appendChild(b);
+    }
+    const upd = () => {
+      row.querySelector('.arr.l').classList.toggle('off', sc.scrollLeft < 10);
+      row.querySelector('.arr.r').classList.toggle('off', sc.scrollLeft + sc.clientWidth > sc.scrollWidth - 10);
+    };
+    sc.addEventListener('scroll', upd, { passive: true }); upd();
+  }
+}
 function setTab(tab){
   S.tab = tab; S.genreFilter = null;
   for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
@@ -1023,8 +1052,9 @@ function render(){
   if (S.tab === 'home') v.innerHTML = homeHtml();
   else if (S.tab === 'tv' || S.tab === 'movie') v.innerHTML = typeHtml(S.tab);
   else if (S.tab === 'mylist') v.innerHTML = listHtml();
-  else if (S.tab === 'search') { v.innerHTML = searchHtml(); const i = $('#q'); i.value = S.q || ''; i.oninput = () => { S.q = i.value; $('#results').innerHTML = searchResults(); }; if (!S.q) setTimeout(() => i.focus(), 50); return; }
+  else if (S.tab === 'search') { v.innerHTML = searchHtml(); const i = $('#q'); i.value = S.q || ''; i.oninput = () => { S.q = i.value; $('#results').innerHTML = searchResults(); decorateRows(); }; if (!S.q) setTimeout(() => i.focus(), 50); return; }
   window.scrollTo(0, y);
+  decorateRows();
 }
 function homeHtml(){
   const [hero, label] = pickHero();
@@ -1190,12 +1220,13 @@ async function play(key, fileId){
   S.cur = { it, file, srcIdx: 0, started: false, counted: false, lastSave: 0, iframe: false };
   const p = $('#player');
   const sub = it.type === 'tv' ? `T${file.season}:E${file.episode}` : '';
-  p.innerHTML = `<div class="pbar"><button class="hbtn" id="pBack">${ICON.back}</button><div class="ttl">${esc(it.title)}<small>${sub}</small></div></div>
+  p.innerHTML = `<div class="pbar"><button class="hbtn" id="pBack">${ICON.back}</button><div class="ttl">${esc(it.title)}<small>${sub}</small></div><span style="flex:1"></span>
+    ${document.pictureInPictureEnabled ? `<button class="hbtn" id="pMini" title="Minimizar en ventana flotante" aria-label="Minimizar en ventana flotante"><svg class="i" viewBox="0 0 24 24"><path d="M19 11h-8v6h8v-6zm4 8V5c0-1.1-.9-2-2-2H3C1.9 3 1 3.9 1 5v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z"/></svg></button>` : ''}</div>
     <video id="vid" controls playsinline preload="auto"></video>
     <button class="btn sec pswitch hidden" id="pSwitch">¿No se ve bien? Usar reproductor de Drive</button>
     <button class="btn play pnext hidden" id="pNext">${ICON.next}Siguiente episodio</button>`;
   if (p.classList.contains('hidden')) pushH('p');
-  p.classList.remove('hidden'); document.body.classList.add('lock');
+  p.classList.remove('hidden', 'mini'); document.body.classList.add('lock');
   const v = $('#vid');
   const pr = pdata().progress[file.id];
   const resumeAt = pr && pr.d && pr.t / pr.d > 0.02 && pr.t / pr.d < 0.92 ? pr.t : 0;
@@ -1207,6 +1238,10 @@ async function play(key, fileId){
   v.addEventListener('error', onVideoError);
   v.addEventListener('loadeddata', () => { if (v.videoWidth === 0 && v.duration > 0) $('#pSwitch')?.classList.remove('hidden'); });
   $('#pBack').onclick = closePlayer;
+  if ($('#pMini')) $('#pMini').onclick = miniPlayer;
+  v.addEventListener('enterpictureinpicture', () => { $('#player').classList.add('mini'); if (!S.detail) document.body.classList.remove('lock'); toast('Vídeo en ventana flotante: puedes seguir navegando o cambiar de ventana.'); });
+  v.addEventListener('leavepictureinpicture', () => { if (S.cur && $('#vid') === v) { $('#player').classList.remove('mini'); document.body.classList.add('lock'); } });
+  try { if ('mediaSession' in navigator) navigator.mediaSession.metadata = new MediaMetadata({ title: it.title + (sub ? ' · ' + sub : ''), artist: 'Mi Cine', artwork: it.p ? [{ src: posterUrl(it, 'w342'), sizes: '342x513', type: 'image/jpeg' }] : [] }); } catch {}
   $('#pSwitch').onclick = () => S.server ? srvCantPlay(true) : useIframe('Usando el reproductor de Google Drive.');
   $('#pNext').onclick = () => playNext();
   p.onpointermove = p.ontouchstart = () => { p.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => p.classList.add('idle'), 3500); };
@@ -1264,7 +1299,7 @@ function useIframe(msg){
   if (!S.cur) return;
   S.cur.iframe = true;
   const v = $('#vid'); if (v) { v.pause(); v.removeAttribute('src'); v.load(); v.replaceWith(Object.assign(document.createElement('iframe'), { src: `https://drive.google.com/file/d/${S.cur.file.id}/preview`, allow: 'autoplay; fullscreen', allowFullscreen: true })); }
-  $('#pSwitch')?.classList.add('hidden');
+  $('#pSwitch')?.classList.add('hidden'); $('#pMini')?.remove();
   if (msg) toast(msg);
   // el reproductor de Drive no informa del progreso: contamos la visualización al abrirlo
   if (!S.cur.counted) { S.cur.counted = true; const d = pdata(); d.views[S.cur.it.key] = (d.views[S.cur.it.key] || 0) + 1; saveStats(); }
@@ -1301,7 +1336,15 @@ function onEnded(){
   const t = setInterval(() => { s--; const el = $('#cd'); if (!el || !S.cur || S.cur.file !== c.file) return clearInterval(t); el.textContent = s; if (s <= 0) { clearInterval(t); playNext(); } }, 1000);
 }
 function playNext(){ const n = nextEp(); if (n) play(S.cur.it.key, n.id); }
+async function miniPlayer(){
+  const v = $('#vid'); if (!v) return;
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    await v.requestPictureInPicture();
+  } catch (e) { toast('Tu navegador no permite la ventana flotante con este vídeo.'); }
+}
 function closePlayer(fromPop){
+  if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (fromPop !== true && history.state?.mc === 'p') return history.back();
   const v = $('#vid'); if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
   $('#player').classList.add('hidden'); $('#player').innerHTML = '';
