@@ -105,6 +105,8 @@ def db_init():
         CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, root TEXT, rel TEXT, size INTEGER, mtime INTEGER, added INTEGER);
         CREATE TABLE IF NOT EXISTS meta(k0 TEXT PRIMARY KEY, json TEXT, at INTEGER);
         CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT, at INTEGER);
+        CREATE TABLE IF NOT EXISTS requests(id INTEGER PRIMARY KEY, user_id INTEGER, username TEXT, type TEXT, tmdb_id INTEGER,
+            title TEXT, year TEXT, poster TEXT, status TEXT DEFAULT 'pendiente', created INTEGER, updated INTEGER);
         ''')
         c.commit()
 
@@ -573,6 +575,133 @@ def full_scan():
         STATUS.update(scanning=False, phase='')
 
 
+# ------------------------------------------------------------------ TV en directo (listas M3U + guía XMLTV)
+LIVE = {'channels': [], 'by_id': {}, 'epg': {}, 'at': 0, 'epg_at': 0, 'error': ''}
+LIVE_LOCK = threading.Lock()
+SUGGESTED_M3U = 'https://www.tdtchannels.com/lists/tv.m3u8'
+SUGGESTED_EPG = 'https://www.tdtchannels.com/epg/TV.xml.gz'
+
+
+def live_cfg():
+    return kv_get('live_cfg') or {'m3u': [], 'epg': ''}
+
+
+def http_get(url, timeout=60):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (MiCine)'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        data = r.read()
+    if data[:2] == b'\x1f\x8b':
+        data = gzip.decompress(data)
+    return data
+
+
+def parse_m3u(text):
+    out, info = [], None
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith('#EXTINF'):
+            attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', line))
+            name = line.rsplit(',', 1)[-1].strip() if ',' in line else attrs.get('tvg-name', 'Canal')
+            info = {'name': name or attrs.get('tvg-name') or 'Canal', 'logo': attrs.get('tvg-logo', ''),
+                    'group': attrs.get('group-title', '') or 'Canales', 'tvg': attrs.get('tvg-id', '')}
+        elif line and not line.startswith('#') and info:
+            if re.match(r'^(https?|rtmp|rtsp|udp|rtp)://', line, re.I):
+                info['url'] = line
+                info['id'] = hashlib.sha1(line.encode()).hexdigest()[:10]
+                out.append(info)
+            info = None
+    return out
+
+
+def xmltv_time(s):
+    m = re.match(r'(\d{14})\s*([+-]\d{4})?', s or '')
+    if not m:
+        return 0
+    t = time.strptime(m.group(1), '%Y%m%d%H%M%S')
+    off = m.group(2) or '+0000'
+    secs = (int(off[1:3]) * 3600 + int(off[3:5]) * 60) * (1 if off[0] == '+' else -1)
+    import calendar
+    return calendar.timegm(t) - secs
+
+
+def refresh_live(force=False):
+    cfg = live_cfg()
+    if not cfg.get('m3u'):
+        with LIVE_LOCK:
+            LIVE.update(channels=[], by_id={}, epg={}, error='')
+        return
+    now = time.time()
+    if force or now - LIVE['at'] > 6 * 3600 or not LIVE['channels']:
+        chans, errs = [], []
+        for u in cfg['m3u']:
+            try:
+                chans += parse_m3u(http_get(u).decode('utf-8', 'replace'))
+            except Exception as e:
+                errs.append('%s: %s' % (u[:60], e))
+        seen, uniq = set(), []
+        for c in chans:
+            if c['id'] not in seen:
+                seen.add(c['id'])
+                uniq.append(c)
+        with LIVE_LOCK:
+            LIVE.update(channels=uniq, by_id={c['id']: c for c in uniq}, at=now, error='; '.join(errs))
+        log('TV en directo: %d canales' % len(uniq))
+    if cfg.get('epg') and (force or now - LIVE['epg_at'] > 12 * 3600):
+        try:
+            import xml.etree.ElementTree as ET
+            import io
+            want = {c['tvg'] for c in LIVE['channels'] if c['tvg']}
+            epg = {}
+            lo, hi = now - 3 * 3600, now + 30 * 3600
+            for ev, el in ET.iterparse(io.BytesIO(http_get(cfg['epg'], 180)), events=('end',)):
+                if el.tag == 'programme':
+                    ch = el.get('channel')
+                    if ch in want:
+                        st, sp = xmltv_time(el.get('start')), xmltv_time(el.get('stop'))
+                        if sp > lo and st < hi:
+                            t = el.findtext('title') or ''
+                            epg.setdefault(ch, []).append((st, sp, t))
+                    el.clear()
+                elif el.tag == 'channel':
+                    el.clear()
+            for v in epg.values():
+                v.sort()
+            with LIVE_LOCK:
+                LIVE.update(epg=epg, epg_at=now)
+            log('Guía de TV: %d canales con programación' % len(epg))
+        except Exception as e:
+            log('Guía de TV', e)
+            LIVE['epg_at'] = now - 11 * 3600  # reintentar en 1 h
+
+
+def live_listing():
+    now = time.time()
+    out = []
+    with LIVE_LOCK:
+        chans, epg = LIVE['channels'], LIVE['epg']
+    for c in chans:
+        cur = nxt = None
+        for st, sp, t in epg.get(c['tvg'], []):
+            if st <= now < sp:
+                cur = (t, st, sp)
+            elif st >= now:
+                nxt = (t, st, sp)
+                break
+        out.append({'id': c['id'], 'name': c['name'], 'logo': c['logo'], 'group': c['group'], 'url': c['url'],
+                    'now': {'t': cur[0], 's': cur[1], 'e': cur[2]} if cur else None,
+                    'next': {'t': nxt[0], 's': nxt[1]} if nxt else None})
+    return out
+
+
+def live_loop():
+    while True:
+        try:
+            refresh_live()
+        except Exception:
+            traceback.print_exc()
+        time.sleep(600)
+
+
 def scanner_loop():
     build_library()
     while True:
@@ -790,6 +919,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = fh.read()
             ctype = 'application/manifest+json' if fp.endswith('.webmanifest') else (mimetypes.guess_type(fp)[0] or 'application/octet-stream')
             return self.send(200, data, ctype, {'Cache-Control': 'max-age=86400'}, gz_ok=False)
+        if r.startswith('/live/'):
+            return self.live_stream(r[len('/live/'):])
         if r.startswith('/stream/'):
             return self.stream(r[len('/stream/'):])
         if r.startswith('/api/'):
@@ -862,6 +993,51 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     data = {'episodes': []}
             return self.send(200, data)
+        if ep == 'search':
+            qq = (q.get('q') or [''])[0].strip()
+            if len(qq) < 2:
+                return self.send(200, {'results': []})
+            try:
+                res = tmdb('/search/multi', query=qq).get('results') or []
+            except Exception as e:
+                return self.err(502, 'TMDB: %s' % e)
+            with LIB_LOCK:
+                have = set(LIB.get('keys', []))
+            reqs = {(r['type'], r['tmdb_id']): r['status'] for r in db().execute('SELECT type, tmdb_id, status FROM requests')}
+            out = []
+            for x in res:
+                ty = x.get('media_type')
+                if ty not in ('movie', 'tv'):
+                    continue
+                k = '%s:%s' % (ty, x['id'])
+                out.append({'type': ty, 'id': x['id'], 'key': k, 't': x.get('title') or x.get('name'),
+                            'y': (x.get('release_date') or x.get('first_air_date') or '')[:4], 'p': x.get('poster_path') or '',
+                            'o': (x.get('overview') or '')[:180], 'have': k in have, 'req': reqs.get((ty, x['id']))})
+            return self.send(200, {'results': out[:20]})
+        if ep == 'requests':
+            with LIB_LOCK:
+                have = set(LIB.get('keys', []))
+            rows = db().execute('SELECT * FROM requests ORDER BY created DESC').fetchall()
+            out = []
+            for r in rows:
+                d = dict(r)
+                if d['status'] != 'disponible' and '%s:%s' % (d['type'], d['tmdb_id']) in have:
+                    d['status'] = 'disponible'
+                    with DB_LOCK:
+                        db().execute("UPDATE requests SET status='disponible', updated=? WHERE id=?", (int(time.time()), d['id']))
+                        db().commit()
+                if u['admin'] or d['user_id'] == u['id']:
+                    out.append(d)
+            return self.send(200, {'requests': out, 'pending': sum(1 for d in out if d['status'] == 'pendiente')})
+        if ep == 'live':
+            with LIVE_LOCK:
+                err = LIVE['error']
+            return self.send(200, {'configured': bool(live_cfg().get('m3u')), 'channels': live_listing(), 'error': err if u['admin'] else ''})
+        if ep == 'admin/live' and u['admin']:
+            with LIVE_LOCK:
+                n, ne = len(LIVE['channels']), len(LIVE['epg'])
+            return self.send(200, dict(live_cfg(), channels=n, epg_channels=ne, error=LIVE['error'],
+                                       suggested={'m3u': SUGGESTED_M3U, 'epg': SUGGESTED_EPG}))
         if ep == 'admin/tmdbsearch' and u['admin']:
             qq = (q.get('q') or [''])[0].strip()
             ty = (q.get('type') or ['movie'])[0]
@@ -929,8 +1105,52 @@ class Handler(BaseHTTPRequestHandler):
                 db().execute('UPDATE users SET pw=? WHERE id=?', (hash_pw(b['new']), u['id']))
                 db().commit()
             return self.send(200, {'ok': True})
+        if ep == 'requests' and method == 'POST':
+            b = self.body()
+            ty, tid = b.get('type'), b.get('id')
+            if ty not in ('movie', 'tv') or not str(tid).isdigit():
+                return self.err(400, 'parámetros')
+            ex = db().execute('SELECT id, status FROM requests WHERE type=? AND tmdb_id=?', (ty, int(tid))).fetchone()
+            if ex:
+                return self.send(200, {'ok': True, 'status': ex['status'], 'already': True})
+            now = int(time.time())
+            with DB_LOCK:
+                db().execute('INSERT INTO requests(user_id, username, type, tmdb_id, title, year, poster, status, created, updated) VALUES(?,?,?,?,?,?,?,?,?,?)',
+                             (u['id'], u['username'], ty, int(tid), str(b.get('title', ''))[:200], str(b.get('year', ''))[:4],
+                              str(b.get('poster', ''))[:200], 'pendiente', now, now))
+                db().commit()
+            return self.send(200, {'ok': True, 'status': 'pendiente'})
+        m = re.match(r'^requests/(\d+)$', ep)
+        if m and method == 'DELETE':
+            r = db().execute('SELECT * FROM requests WHERE id=?', (int(m.group(1)),)).fetchone()
+            if not r:
+                return self.err(404, 'No existe')
+            if not u['admin'] and (r['user_id'] != u['id'] or r['status'] != 'pendiente'):
+                return self.err(403, 'No puedes borrar esta petición')
+            with DB_LOCK:
+                db().execute('DELETE FROM requests WHERE id=?', (r['id'],))
+                db().commit()
+            return self.send(200, {'ok': True})
         if not u['admin']:
             return self.err(403, 'Solo administradores')
+        if m and method == 'POST':
+            st = self.body().get('status')
+            if st not in ('pendiente', 'disponible', 'rechazada', 'en camino'):
+                return self.err(400, 'Estado no válido')
+            with DB_LOCK:
+                db().execute('UPDATE requests SET status=?, updated=? WHERE id=?', (st, int(time.time()), int(m.group(1))))
+                db().commit()
+            return self.send(200, {'ok': True})
+        if ep == 'admin/live' and method == 'POST':
+            b = self.body()
+            m3u = [s.strip() for s in (b.get('m3u') or []) if isinstance(s, str) and re.match(r'^https?://', s.strip())][:10]
+            epg = str(b.get('epg') or '').strip()
+            if epg and not re.match(r'^https?://', epg):
+                return self.err(400, 'La guía debe ser una dirección http(s)')
+            kv_set('live_cfg', {'m3u': m3u, 'epg': epg})
+            LIVE.update(at=0, epg_at=0)
+            threading.Thread(target=refresh_live, args=(True,), daemon=True).start()
+            return self.send(200, {'ok': True})
         if ep in ('admin/fix', 'admin/hide') and method == 'POST':
             b = self.body()
             k0s = [str(k) for k in (b.get('k0s') or []) if isinstance(k, str)][:50]
@@ -1060,6 +1280,42 @@ class Handler(BaseHTTPRequestHandler):
                 left -= len(chunk)
 
 
+    def live_stream(self, cid):
+        """Canal en directo para el navegador: vídeo copiado + audio AAC, en MP4 fragmentado."""
+        if not self.user():
+            return self.err(401, 'sesión requerida')
+        with LIVE_LOCK:
+            ch = LIVE['by_id'].get(cid.split('?')[0])
+        if not ch:
+            return self.err(404, 'canal no encontrado')
+        ff = tool('ffmpeg')
+        if not ff:
+            return self.err(501, 'ffmpeg no está instalado en el servidor')
+        cmd = [ff, '-hide_banner', '-loglevel', 'error', '-nostdin', '-user_agent', 'Mozilla/5.0']
+        if ch['url'].lower().startswith('http'):
+            cmd += ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']
+        cmd += ['-i', ch['url'], '-map', '0:v:0?', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-ac', '2', '-b:a', '160k',
+                '-sn', '-dn', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', 'pipe:1']
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            self.send_response(200)
+            self.send_header('Content-Type', 'video/mp4')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Connection', 'close')
+            self.end_headers()
+            self.close_connection = True
+            while True:
+                chunk = proc.stdout.read(128 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        finally:
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except Exception:
+                pass
+
     def transcode(self, fid, full, q):
         """Vídeo copiado tal cual + audio convertido a AAC estéreo, en MP4 fragmentado (empieza en ?start=segundos)."""
         ff = tool('ffmpeg')
@@ -1120,6 +1376,7 @@ def main():
     cmd = args[0]
     if cmd == 'serve':
         threading.Thread(target=scanner_loop, daemon=True).start()
+        threading.Thread(target=live_loop, daemon=True).start()
         srv = ThreadingHTTPServer((CFG['host'], int(CFG['port'])), Handler)
         srv.daemon_threads = True
         log('Mi Cine escuchando en http://%s:%s%s/' % (CFG['host'], CFG['port'], CFG['base_url']))
