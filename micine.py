@@ -54,6 +54,7 @@ DEFAULT_CONFIG = {
     "min_size_mb": 15,
     "session_days": 90,
     "cookie_secure": True,
+    "exclude": [],
 }
 
 
@@ -351,8 +352,13 @@ def file_id(root_name, rel):
     return hashlib.sha1((root_name + '\0' + rel).encode('utf-8', 'surrogateescape')).hexdigest()[:12]
 
 
+# carpetas que nunca contienen pelis: internas del Synology/Windows, papeleras, descargas a medias
+SKIP_DIRS = re.compile(r'^[@#.$]|^(lost\+found|system volume information|recycle(\.bin)?|recycler|trash|papelera|incomplete|incompletos?|\.?tmp|temp)$', re.I)
+
+
 def scan_files():
     min_size = CFG['min_size_mb'] * 1024 * 1024
+    excl = {e.strip().lower() for e in CFG.get('exclude', []) if e.strip()}
     found = {}
     for root in CFG['media']:
         base = root['path']
@@ -361,7 +367,7 @@ def scan_files():
             continue
         STATUS['phase'] = 'Leyendo ' + root['name']
         for dirpath, dirnames, filenames in os.walk(base, followlinks=True):
-            dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+            dirnames[:] = [d for d in dirnames if not SKIP_DIRS.search(d) and d.lower() not in excl]
             for fn in filenames:
                 ext = os.path.splitext(fn)[1].lower()
                 if ext not in VIDEO_EXT or fn.startswith('.'):
