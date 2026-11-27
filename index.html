@@ -478,7 +478,7 @@ function showWho(){
   $('#manageBtn').textContent = S.manage ? 'Listo' : 'Administrar perfiles';
   if (needConnect) { box.innerHTML = '<p class="small" style="text-align:center;max-width:320px">Conecta tu cuenta de Google para leer tus vídeos de Drive. Solo lectura: Mi Cine nunca modifica tus archivos.</p>'; return; }
   box.innerHTML = S.stats.profiles.map(p =>
-    `<button class="prof" data-pid="${esc(p.id)}"><div class="av" style="background:${p.color}">${esc(p.name[0]?.toUpperCase()||'?')}</div><span>${esc(p.name)}</span></button>`
+    `<button class="prof" data-pid="${esc(p.id)}"><div class="av" style="background:${p.color}">${esc(p.name[0]?.toUpperCase()||'?')}</div><span>${esc(p.name)}</span>${p.maxAge ? `<small style="color:#46d369;font-size:11px;margin-top:-4px">${p.maxAge <= 7 ? 'Niños' : '+12'}</small>` : ''}</button>`
   ).join('') + (S.stats.profiles.length < 6 ? `<button class="prof add" data-pid="+"><div class="av">+</div><span>Añadir perfil</span></button>` : '');
 }
 
@@ -507,14 +507,21 @@ function addProfile(name){
 function editProfile(p){
   openMenu(`
     <div class="hd">${p ? 'Editar perfil' : 'Nuevo perfil'}</div>
-    <div style="padding:8px 20px 4px"><input id="pname" maxlength="16" value="${esc(p?.name||'')}" placeholder="Nombre" style="width:100%;background:#333;border:1px solid #555;border-radius:6px;color:#fff;padding:12px;font-size:16px"></div>
+    <div style="padding:8px 20px 4px"><input id="pname" maxlength="16" value="${esc(p?.name||'')}" placeholder="Nombre" style="width:100%;background:#333;border:1px solid #555;border-radius:6px;color:#fff;padding:12px;font-size:16px">
+      <label class="small" for="page" style="display:block;margin:12px 0 6px">¿Qué puede ver este perfil?</label>
+      <select id="page" style="width:100%">
+        <option value="">Todo (adultos)</option>
+        <option value="12" ${p?.maxAge === 12 ? 'selected' : ''}>Hasta 12 años (adolescentes)</option>
+        <option value="7" ${p?.maxAge === 7 ? 'selected' : ''}>Hasta 7 años (niños)</option>
+      </select></div>
     <button id="psave">${ICON.check} Guardar</button>
     ${p && S.stats.profiles.length > 1 ? `<button id="pdel" style="color:#ff6b6b">${ICON.close} Eliminar perfil</button>` : ''}
   `);
   setTimeout(() => $('#pname')?.focus(), 50);
   $('#psave').onclick = () => {
     const name = $('#pname').value.trim(); if (!name) return;
-    if (p) { p.name = name; saveStats(); } else addProfile(name);
+    const age = $('#page').value ? +$('#page').value : null;
+    if (p) { p.name = name; p.maxAge = age; saveStats(); } else { const np = addProfile(name); np.maxAge = age; saveStats(); }
     closeMenu(); showWho();
   };
   if ($('#pdel')) $('#pdel').onclick = () => {
@@ -846,9 +853,8 @@ function buildLibrary(){
     }
     if (it.type === 'movie') it.main = it.files.slice().sort((a, b) => b.s - a.s)[0];
   }
-  S.items = Object.values(items).filter(it => it.matched);
-  S.others = Object.values(items).filter(it => !it.matched).sort((a, b) => b.added - a.added);
   S.byKey = items;
+  setLib(Object.values(items).filter(it => it.matched), Object.values(items).filter(it => !it.matched).sort((a, b) => b.added - a.added));
 }
 
 /* =========================================================
@@ -856,6 +862,7 @@ function buildLibrary(){
    ========================================================= */
 let syncing = false;
 async function enterApp(){
+  applyKids();
   show('app');
   $('#myAvatar').style.background = S.profile.color;
   $('#myAvatar').textContent = S.profile.name[0].toUpperCase();
@@ -931,8 +938,8 @@ function houseViews(){
   return total;
 }
 function mostWatched(){
-  const v = houseViews();
-  return Object.entries(v).sort((a, b) => b[1] - a[1]).map(([k]) => S.byKey[k]).filter(Boolean).slice(0, 10);
+  const v = houseViews(); const ok = new Set(S.items);
+  return Object.entries(v).sort((a, b) => b[1] - a[1]).map(([k]) => S.byKey[k]).filter(it => it && ok.has(it)).slice(0, 10);
 }
 function continueWatching(){
   const d = pdata(); const out = []; const seen = new Set();
@@ -1109,6 +1116,77 @@ addEventListener('resize', () => sizeTrailer());
 addEventListener('scroll', () => { const hero = $('#view .hero .trailer'); if (!hero) return; const out = hero.getBoundingClientRect().bottom < 80; if (out !== S.heroOut) { S.heroOut = out; ytCmd(out ? 'pauseVideo' : 'playVideo'); } }, { passive: true });
 document.addEventListener('visibilitychange', () => { if ($('#view .hero .trailer')) ytCmd(document.hidden ? 'pauseVideo' : 'playVideo'); });
 
+/* ---------- perfiles por edad ---------- */
+const kidsMax = () => (S.profile && S.profile.maxAge) || null;
+function kidOk(it, max){
+  if (it.age != null) return it.age <= max;
+  const g = it.g || [];
+  const soft = g.some(x => x === 16 || x === 10751 || x === 10762);      // animación, familia, infantil
+  const hard = g.some(x => x === 27 || x === 53 || x === 80 || x === 10752 || x === 10768); // terror, suspense, crimen, bélica
+  return max >= 12 ? !hard : soft && !hard;
+}
+function setLib(items, others){ S.allItems = items; S.allOthers = others; applyKids(); }
+function applyKids(){
+  if (!S.allItems) return;
+  const max = kidsMax();
+  S.items = max ? S.allItems.filter(it => kidOk(it, max)) : S.allItems;
+  S.others = max ? [] : S.allOthers;
+}
+
+/* ---------- sagas ---------- */
+function sagas(){
+  const m = {};
+  for (const it of S.items) if (it.col && it.type === 'movie') (m[it.col[0]] ||= { id: it.col[0], name: it.col[1], items: [] }).items.push(it);
+  return Object.values(m).filter(s => s.items.length >= 2)
+    .map(s => { s.items.sort((a, b) => (a.d || '').localeCompare(b.d || '')); s.pop = s.items.reduce((a, b) => a + (b.pop || 0), 0); return s; })
+    .sort((a, b) => b.pop - a.pop);
+}
+const sagaTitle = n => 'Saga: ' + String(n || '').replace(/\s*[-–:]?\s*\(?(colecci[oó]n|collection|saga)\)?\s*$/i, '').trim();
+function sagaStrip(it){
+  if (!it.col) return '';
+  const others = S.items.filter(x => x.col && x.col[0] === it.col[0]).sort((a, b) => (a.d || '').localeCompare(b.d || ''));
+  if (others.length < 2) return '';
+  return `<div class="seasonbar"><h3>${esc(sagaTitle(it.col[1]))}</h3><span class="small">${others.length} películas</span></div>
+    <div class="scroller" style="padding:0 0 8px">${others.map(x => card(x)).join('')}</div>`;
+}
+
+/* ---------- corregir / ocultar (administradores) ---------- */
+function openFix(it){
+  const file = (it.files || [])[0];
+  openMenu(`<div class="hd">${it.matched ? 'Corregir' : 'Identificar'} «${esc(it.title)}»${file?.n ? `<br><span style="font-size:11px">Archivo: ${esc(file.n)}</span>` : ''}</div>
+    <div style="padding:10px 20px 0">
+      <div style="display:flex;gap:8px"><input class="fld" id="fxQ" value="${esc(it.title)}" placeholder="Título a buscar" style="margin:0">
+      <select id="fxT"><option value="movie" ${it.type === 'movie' ? 'selected' : ''}>Película</option><option value="tv" ${it.type === 'tv' ? 'selected' : ''}>Serie</option></select><button class="mini" id="fxGo">Buscar</button></div>
+      <div id="fxRes" style="max-height:52vh;overflow:auto;margin-top:10px"><p class="small">Escribe el título correcto y pulsa Intro.</p></div>
+    </div>`);
+  const go = async () => {
+    const box = $('#fxRes'); box.innerHTML = '<div class="spin" style="margin:16px auto"></div>';
+    try {
+      const r = await api(`admin/tmdbsearch?type=${$('#fxT').value}&q=${encodeURIComponent($('#fxQ').value)}`);
+      box.innerHTML = r.results.length ? r.results.map(x => `<button class="fxr" data-id="${x.id}" style="display:flex;gap:12px;align-items:center;text-align:left;width:100%;background:none;border:0;padding:8px 0;border-bottom:1px solid #333">
+        ${x.p ? `<img src="${IMG}w92${x.p}" alt="" style="width:46px;border-radius:4px">` : '<div style="width:46px;height:69px;background:#333;border-radius:4px"></div>'}
+        <span><b>${esc(x.t)}</b> ${x.y ? `<span class="small">(${x.y})</span>` : ''}<br><span class="small">${esc(x.o)}</span></span></button>`).join('') : '<p class="small">Sin resultados. Prueba con otro título o cambia Película/Serie.</p>';
+      box.querySelectorAll('.fxr').forEach(b => b.onclick = async () => {
+        box.innerHTML = '<p class="small">Guardando…</p>';
+        try {
+          await api('admin/fix', { method: 'POST', body: { k0s: it.k0, type: $('#fxT').value, id: +b.dataset.id } });
+          closeMenu(); closeDetail(); toast('Corregido ✔'); S.libVersion = 0; srvLoadLibrary(true);
+        } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+      });
+    } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  };
+  $('#fxQ').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); go(); } };
+  $('#fxT').onchange = go;
+  $('#fxGo').onclick = go;
+  setTimeout(() => { $('#fxQ').focus(); $('#fxQ').select(); }, 60);
+  if (!it.matched) go();
+}
+async function hideItem(it, btn){
+  if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.lastChild.textContent = '¿Seguro? Toca otra vez'; return; }
+  try { await api('admin/hide', { method: 'POST', body: { k0s: it.k0 } }); closeDetail(); toast('Ocultado de la biblioteca'); S.libVersion = 0; srvLoadLibrary(true); }
+  catch (e) { toast(e.message); }
+}
+
 function setTab(tab){
   S.tab = tab; S.genreFilter = null;
   for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
@@ -1146,7 +1224,8 @@ function homeHtml(){
   if (tt.length >= 3) h += row('Top 10 series en tendencia', tt, { top10: true });
   if (tm.length < 3 && tt.length < 3) h += row('Top 10 en tendencia', top10(), { top10: true });
   h += row('Aclamadas por la crítica', topRated());
-  genreRows(null).forEach((g, i) => { h += row(g.name, g.items); if (i === 1) h += row('Series para maratonear', S.items.filter(it => it.type === 'tv' && it.eps?.length >= 8).sort((a, b) => b.pop - a.pop).slice(0, 20)); });
+  const sg = sagas();
+  genreRows(null).forEach((g, i) => { h += row(g.name, g.items); if (sg[i]) h += row(sagaTitle(sg[i].name), sg[i].items); if (i === 1) h += row('Series para maratonear', S.items.filter(it => it.type === 'tv' && it.eps?.length >= 8).sort((a, b) => b.pop - a.pop).slice(0, 20)); });
   if (S.others.length) h += row('Otros vídeos', S.others.slice(0, 40));
   return h;
 }
@@ -1170,6 +1249,15 @@ function typeHtml(type){
   h += row('Estrenos recientes', recentReleases(type));
   h += row(type === 'tv' ? 'Con episodios nuevos' : 'Añadidas recientemente', recentlyAdded(type));
   h += row('Mejor valoradas', topRated(type));
+  if (type === 'movie') {
+    sagas().slice(0, 12).forEach(s => h += row(sagaTitle(s.name), s.items));
+    const short = S.items.filter(it => it.type === 'movie' && it.rt > 0 && it.rt <= 100).sort((a, b) => b.pop - a.pop).slice(0, 25);
+    if (short.length >= 5) h += row('Para ver en menos de 1 h 40 min', short);
+    for (const [from, label] of [[1970, 'Clásicos de los 70'], [1980, 'Clásicos de los 80'], [1990, 'Los 90'], [2000, 'Los 2000']]) {
+      const dec = S.items.filter(it => it.type === 'movie' && +it.d?.slice(0, 4) >= from && +it.d?.slice(0, 4) < from + 10).sort((a, b) => b.pop - a.pop).slice(0, 25);
+      if (dec.length >= 5) h += row(label, dec);
+    }
+  }
   gs.slice(0, 8).forEach(g => h += row(g.name, g.items));
   h += `<section class="row"><h2>Todo (A-Z)</h2><div class="grid">${S.items.filter(it => it.type === type).sort((a, b) => a.title.localeCompare(b.title, 'es')).map(it => card(it)).join('')}</div></section>`;
   return h;
@@ -1227,7 +1315,7 @@ function renderDetail(keepScroll){
   const inList = pdata().list.includes(it.key);
   const views = houseViews()[it.key] || 0;
   const rank = trendRank()[it.key];
-  const dur = it.type === 'movie' && it.main?.d ? fmtDur(it.main.d) : '';
+  const dur = it.type === 'movie' ? (it.main?.d ? fmtDur(it.main.d) : it.rt ? fmtDur(it.rt * 60000) : '') : '';
   let eps = '';
   if (it.type === 'tv' && it.eps) {
     const sInfo = it.tmdbId ? S.seasons[it.tmdbId + ':' + S.detail.season] : null;
@@ -1251,7 +1339,7 @@ function renderDetail(keepScroll){
       <h1>${esc(it.title)}</h1>
       <div class="meta">${it.r ? `<span class="match">★ ${it.r.toFixed(1)}</span>` : ''}${year ? `<span>${year}</span>` : ''}
         ${it.type === 'tv' && it.seasons ? `<span>${it.seasons.length} temporada${it.seasons.length > 1 ? 's' : ''}</span>` : ''}${dur ? `<span>${dur}</span>` : ''}
-        <span class="box">HD</span>${views ? `<span>👁 ${views} ${views === 1 ? 'vez' : 'veces'} en casa</span>` : ''}</div>
+        ${it.age != null ? `<span class="box">${it.age === 0 ? 'TP' : '+' + it.age}</span>` : ''}<span class="box">HD</span>${views ? `<span>👁 ${views} ${views === 1 ? 'vez' : 'veces'} en casa</span>` : ''}</div>
       ${rank !== undefined && rank < 10 ? `<div class="rank" style="margin-bottom:12px;display:flex;align-items:center;gap:8px;font-weight:700"><span class="t10">TOP<b>10</b></span>Nº ${rank + 1} en tendencias esta semana</div>` : ''}
       <button class="btn play" data-play="${esc(nu.file.id)}" data-k="${esc(it.key)}">${ICON.play}${esc(nu.label)}</button>
       ${nu.frac > 0.02 && nu.frac < 0.92 ? `<div class="prog" style="position:static;margin:2px 0 10px"><i style="width:${nu.frac*100}%"></i></div>` : ''}
@@ -1260,11 +1348,15 @@ function renderDetail(keepScroll){
       <div class="actions">
         <button data-mylist="${esc(it.key)}">${inList ? ICON.check : ICON.plus}Mi lista</button>
         ${it.tmdbId && !S.demo ? `<button data-tmdb="${it.type}/${it.tmdbId}">${ICON.info}Más en TMDB</button>` : ''}
+        ${S.server && S.user?.admin && !kidsMax() && it.k0 ? `<button id="fixBtn">${ICON.gear}${it.matched ? 'Corregir' : 'Identificar'}</button><button id="hideBtn">${ICON.close}Ocultar</button>` : ''}
       </div>
+      ${sagaStrip(it)}
       ${eps}
     </div></div>`;
   if (keepScroll) sh.scrollTop = st;
   $('#closeSheet').onclick = closeDetail;
+  if ($('#fixBtn')) $('#fixBtn').onclick = () => openFix(it);
+  if ($('#hideBtn')) $('#hideBtn').onclick = e => hideItem(it, e.currentTarget);
   const sel = $('#seasonSel');
   if (sel) sel.onchange = async () => { S.detail.season = +sel.value; renderDetail(true); if (it.tmdbId && !S.demo) { await seasonInfo(it.tmdbId, S.detail.season); renderDetail(true); } };
 }
@@ -1443,7 +1535,7 @@ $('#menuBtn').onclick = () => {
   openMenu(`<div class="hd">${esc(S.profile.name)} · ${S.items.length} títulos${S.others.length ? ` · ${S.others.length} otros vídeos` : ''}</div>
     <button data-m="who">${ICON.user} Cambiar de perfil</button>
     ${S.demo ? `<button data-m="exitdemo">${ICON.out} Salir de la demo</button>` : S.server ? `
-    ${S.user?.admin ? `<button data-m="admin">${ICON.gear} Panel de administración</button>` : ''}
+    ${S.user?.admin && !kidsMax() ? `<button data-m="admin">${ICON.gear} Panel de administración</button>` : ''}
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
     <button data-m="trailers">${ICON.play} Tráilers en portada: ${LS.get('noTrailers') ? 'no' : 'sí'}</button>
     <button data-m="pass">${ICON.user} Cambiar mi contraseña</button>
@@ -1526,7 +1618,7 @@ function startDemo(){
   };
   movies.forEach(([t, g], i) => mk(t, g, 'movie', i));
   series.forEach(([t, g], i) => mk(t, g, 'tv', i));
-  S.byKey = items; S.items = Object.values(items); S.others = [];
+  S.byKey = items; setLib(Object.values(items), []);
   S.trending = ['movie:3','tv:102','movie:1','tv:105','movie:7','movie:2','tv:101','movie:11','tv:107','movie:5','tv:103','movie:9','tv:110','tv:104','movie:13'];
   S.genres = { map: DEMO_GENRES };
   S.stats = newStats();
@@ -1595,8 +1687,9 @@ function srvExpand(d){
     if (it.f) { it.files = it.f.map(([id, n, s, c]) => ({ id, n, s, c: iso(c), d: 0 })); it.main = it.files[0]; delete it.f; }
     return it;
   };
-  S.items = d.items.map(fix); S.others = d.others.map(fix);
-  S.byKey = {}; for (const it of S.items.concat(S.others)) S.byKey[it.key] = it;
+  const all = d.items.map(fix), oth = d.others.map(fix);
+  S.byKey = {}; for (const it of all.concat(oth)) S.byKey[it.key] = it;
+  setLib(all, oth);
   S.trending = d.trending || []; S.genres = { map: d.genres || {} };
   S.libVersion = d.version;
 }

@@ -341,6 +341,53 @@ def refresh_genres():
         log('TMDB genres', e)
 
 
+CERT_AGE = {'A': 0, 'APTA': 0, 'TP': 0, 'ERI': 0, 'G': 0, 'U': 0, 'TV-Y': 0, 'TV-G': 0, 'ALL': 0, '0': 0,
+            '7': 7, 'TV-Y7': 7, 'PG': 8, 'TV-PG': 8, '10': 10, '12': 12, 'PG-13': 12, '13': 13, 'TV-14': 14,
+            '14': 14, '15': 15, '16': 16, 'R': 17, '18': 18, 'NC-17': 18, 'TV-MA': 18, 'X': 18}
+
+
+def cert_age(c):
+    c = (c or '').strip().upper()
+    if c in CERT_AGE:
+        return CERT_AGE[c]
+    m = re.match(r'^\+?(\d{1,2})', c)
+    return int(m.group(1)) if m else None
+
+
+def fetch_details(key):
+    """Ficha ampliada de TMDB (una vez por título): saga, duración y edad recomendada."""
+    ty, tid = key.split(':', 1)
+    try:
+        if ty == 'movie':
+            d = tmdb('/movie/%s' % tid, append_to_response='release_dates')
+            col = d.get('belongs_to_collection')
+            certs = {}
+            for r in (d.get('release_dates') or {}).get('results', []):
+                for rd in r.get('release_dates', []):
+                    if rd.get('certification'):
+                        certs.setdefault(r.get('iso_3166_1'), rd['certification'])
+            rt = d.get('runtime') or 0
+        else:
+            d = tmdb('/tv/%s' % tid, append_to_response='content_ratings')
+            col = None
+            certs = {r.get('iso_3166_1'): r.get('rating') for r in (d.get('content_ratings') or {}).get('results', []) if r.get('rating')}
+            rt = (d.get('episode_run_time') or [0])[0]
+    except Exception as e:
+        log('TMDB detalles', key, e)
+        return
+    age = None
+    for cc in ('ES', 'US', 'GB', 'DE', 'FR'):
+        if cc in certs:
+            age = cert_age(certs[cc])
+            if age is not None:
+                break
+    kv_set('det:' + key, {'col': [col['id'], col.get('name') or ''] if col else None, 'rt': rt or 0, 'age': age})
+
+
+def load_details():
+    return {r['k'][4:]: json.loads(r['v']) for r in db().execute("SELECT k, v FROM kv WHERE k LIKE 'det:%'")}
+
+
 # ------------------------------------------------------------------ escaneo y biblioteca
 STATUS = {'scanning': False, 'phase': '', 'done': 0, 'total': 0, 'files': 0, 'last_scan': 0, 'error': ''}
 LIB = {'version': 0, 'json': b'{}', 'gz': gzip.compress(b'{}'), 'paths': {}}
@@ -426,10 +473,13 @@ def group_files(files):
 def build_library():
     files = load_files()
     meta = load_meta()
+    det = load_details()
     groups = group_files(files)
     items = {}
     for g in groups.values():
         m = meta.get(g['k0'])
+        if m and m.get('hidden'):
+            continue
         ok = bool(m) and not m.get('miss')
         ty = (m.get('ty') or g['type']) if ok else g['type']
         key = '%s:%s' % (ty, m['id']) if ok else 'x:' + g['k0']
@@ -439,8 +489,17 @@ def build_library():
                 'key': key, 'type': ty, 'matched': ok, 'tmdbId': m['id'] if ok else None,
                 'title': m['t'] if ok else g['title'], 'p': m['p'] if ok else '', 'b': m['b'] if ok else '',
                 'o': m['o'] if ok else '', 'g': m['g'] if ok else [], 'r': m['r'] if ok else 0, 'v': m['v'] if ok else 0,
-                'd': m['d'] if ok else ('%s-01-01' % g['year'] if g['year'] else ''), 'pop': m['pop'] if ok else 0, '_files': []}
+                'd': m['d'] if ok else ('%s-01-01' % g['year'] if g['year'] else ''), 'pop': m['pop'] if ok else 0, '_files': [], 'k0': []}
+            dd = det.get(key)
+            if dd:
+                if dd.get('col'):
+                    it['col'] = dd['col']
+                if dd.get('rt'):
+                    it['rt'] = dd['rt']
+                if dd.get('age') is not None:
+                    it['age'] = dd['age']
         it['_files'].extend(g['files'])
+        it['k0'].append(g['k0'])
     paths = {}
     out_items, others = [], []
     for it in items.values():
@@ -468,7 +527,8 @@ def build_library():
             'trending': kv_get('trending') or [], 'genres': kv_get('genres') or {}}
     raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
     with LIB_LOCK:
-        LIB.update(version=data['version'], json=raw, gz=gzip.compress(raw, 6), paths=paths)
+        LIB.update(version=data['version'], json=raw, gz=gzip.compress(raw, 6), paths=paths,
+                   keys=[i['key'] for i in out_items], det_keys=set(det))
     return groups, meta
 
 
@@ -494,6 +554,17 @@ def full_scan():
                     if i % 200 == 0:
                         build_library()
             build_library()
+        if CFG.get('tmdb_key'):
+            with LIB_LOCK:
+                need = [k for k in LIB.get('keys', []) if k not in LIB.get('det_keys', set())]
+            if need:
+                STATUS.update(phase='Edades y sagas', done=0, total=len(need))
+                with concurrent.futures.ThreadPoolExecutor(6) as ex:
+                    for i, _ in enumerate(ex.map(fetch_details, need), 1):
+                        STATUS['done'] = i
+                        if i % 300 == 0:
+                            build_library()
+                build_library()
         STATUS['last_scan'] = int(time.time())
     except Exception as e:
         STATUS['error'] = str(e)
@@ -791,6 +862,18 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     data = {'episodes': []}
             return self.send(200, data)
+        if ep == 'admin/tmdbsearch' and u['admin']:
+            qq = (q.get('q') or [''])[0].strip()
+            ty = (q.get('type') or ['movie'])[0]
+            if not qq or ty not in ('movie', 'tv'):
+                return self.err(400, 'parámetros')
+            try:
+                res = tmdb('/search/%s' % ty, query=qq).get('results') or []
+            except Exception as e:
+                return self.err(502, 'TMDB: %s' % e)
+            return self.send(200, {'results': [{'id': x['id'], 't': x.get('title') or x.get('name'),
+                                                'y': (x.get('release_date') or x.get('first_air_date') or '')[:4],
+                                                'p': x.get('poster_path') or '', 'o': (x.get('overview') or '')[:160]} for x in res[:12]]})
         if ep == 'admin/users' and u['admin']:
             rows = db().execute('''SELECT u.id, u.username, u.admin, u.disabled, u.created,
                                    (SELECT MAX(created) FROM sessions s WHERE s.user_id=u.id) AS last_login
@@ -848,6 +931,30 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'ok': True})
         if not u['admin']:
             return self.err(403, 'Solo administradores')
+        if ep in ('admin/fix', 'admin/hide') and method == 'POST':
+            b = self.body()
+            k0s = [str(k) for k in (b.get('k0s') or []) if isinstance(k, str)][:50]
+            if not k0s:
+                return self.err(400, 'Falta el título')
+            if ep == 'admin/hide':
+                val = {'hidden': 1, 'manual': 1}
+            else:
+                ty, tid = b.get('type'), b.get('id')
+                if ty not in ('movie', 'tv') or not str(tid).isdigit():
+                    return self.err(400, 'parámetros')
+                try:
+                    d = tmdb('/%s/%s' % (ty, tid))
+                except Exception as e:
+                    return self.err(502, 'TMDB: %s' % e)
+                d['genre_ids'] = [g['id'] for g in d.get('genres') or []]
+                val = dict(compact(d, ty), manual=1)
+                fetch_details('%s:%s' % (ty, tid))
+            with DB_LOCK:
+                for k0 in k0s:
+                    db().execute('INSERT OR REPLACE INTO meta VALUES(?,?,?)', (k0, json.dumps(val), int(time.time())))
+                db().commit()
+            build_library()
+            return self.send(200, {'ok': True})
         if ep == 'admin/scan' and method == 'POST':
             SCAN_EVENT.set()
             return self.send(200, {'ok': True})
