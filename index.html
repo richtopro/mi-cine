@@ -1834,6 +1834,7 @@ $('#menuBtn').onclick = () => {
     <button data-m="trailers">${ICON.play} Tráilers en portada: ${LS.get('noTrailers') ? 'no' : 'sí'}</button>
     <button data-m="pass">${ICON.user} Cambiar mi contraseña</button>
     ${window.MiCineAndroid ? `<button data-m="server">${ICON.link} Cambiar dirección del servidor</button>` : ''}
+    ${window.MiCineAndroid?.checkUpdate ? `<button data-m="appupd">${ICON.refresh} Buscar actualización de la app (versión ${(() => { try { return MiCineAndroid.appVersion(); } catch { return '?'; } })()})</button>` : ''}
     <button data-m="srvlogout">${ICON.out} Cerrar sesión (${esc(S.user?.username || '')})</button>` : `
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
     <button data-m="link">${ICON.link} Copiar enlace para otro dispositivo</button>
@@ -1845,6 +1846,7 @@ $('#menu').addEventListener('click', async e => {
   const b = e.target.closest('[data-m]'); if (!b) return;
   const m = b.dataset.m; closeMenu();
   if (m === 'who') { S.manage = false; showWho(); }
+  if (m === 'appupd') { toast('Comprobando si hay una versión nueva…'); try { MiCineAndroid.checkUpdate(); } catch {} return; }
   if (m === 'myicon') { setTimeout(() => editProfile(S.profile, true), 50); return; }
   if (m === 'admin') return openAdmin();
   if (m === 'mylist') return setTab('mylist');
