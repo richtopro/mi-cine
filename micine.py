@@ -387,6 +387,60 @@ def fetch_details(key):
     kv_set('det:' + key, {'col': [col['id'], col.get('name') or ''] if col else None, 'rt': rt or 0, 'age': age})
 
 
+PROV_EVERY = 3 * DAY
+
+
+def prov_name(n):
+    """Une variantes de la misma plataforma: «Netflix basic with Ads» -> Netflix, «HBO Max Amazon Channel» -> HBO Max."""
+    n = re.sub(r'\s+(basic|standard|estándar)?\s*with ads$', '', n or '', flags=re.I)
+    n = re.sub(r'\s+(amazon channel|apple tv channel|ficción total|con anuncios)$', '', n, flags=re.I)
+    return {'Max': 'HBO Max', 'Amazon Prime Video': 'Prime Video', 'Disney Plus': 'Disney+', 'Apple TV Plus': 'Apple TV+'}.get(n.strip(), n.strip())
+
+
+def fetch_providers(key):
+    """En qué plataformas de suscripción está hoy este título en España (datos de JustWatch vía TMDB)."""
+    ty, tid = key.split(':', 1)
+    try:
+        d = tmdb('/%s/%s/watch/providers' % ('movie' if ty == 'movie' else 'tv', tid))
+    except Exception as e:
+        log('TMDB plataformas', key, e)
+        return
+    es = (d.get('results') or {}).get('ES') or {}
+    out, logos = [], {}
+    for p in (es.get('flatrate') or []) + (es.get('ads') or []) + (es.get('free') or []):
+        n = prov_name(p.get('provider_name'))
+        if n and n not in out:
+            out.append(n)
+            if p.get('logo_path') and (n == p.get('provider_name') or n not in logos):
+                logos[n] = p['logo_path']
+    kv_set('prov:' + key, {'at': int(time.time()), 'p': out, 'l': logos})
+
+
+def load_providers():
+    out = {}
+    for r in db().execute("SELECT k, v FROM kv WHERE k LIKE 'prov:%'"):
+        out[r['k'][5:]] = json.loads(r['v'])
+    return out
+
+
+def refresh_cinema():
+    """Películas en cartelera ahora mismo en España (para la fila «Taquilla»)."""
+    if kv_get('cinema', 12 * 3600) is not None:
+        return
+    ids = []
+    for page in (1, 2, 3, 4):
+        try:
+            res = tmdb('/movie/now_playing', region='ES', page=page)
+        except Exception as e:
+            log('TMDB cartelera', e)
+            break
+        ids += [x['id'] for x in res.get('results') or []]
+        if page >= (res.get('total_pages') or 1):
+            break
+    if ids:
+        kv_set('cinema', ids)
+
+
 def load_details():
     return {r['k'][4:]: json.loads(r['v']) for r in db().execute("SELECT k, v FROM kv WHERE k LIKE 'det:%'")}
 
@@ -477,6 +531,7 @@ def build_library():
     files = load_files()
     meta = load_meta()
     det = load_details()
+    prov = load_providers()
     groups = group_files(files)
     items = {}
     for g in groups.values():
@@ -501,6 +556,9 @@ def build_library():
                     it['rt'] = dd['rt']
                 if dd.get('age') is not None:
                     it['age'] = dd['age']
+            pv = prov.get(key)
+            if pv and pv.get('p'):
+                it['pv'] = pv['p']
         it['_files'].extend(g['files'])
         it['k0'].append(g['k0'])
     paths, info = {}, {}
@@ -530,8 +588,18 @@ def build_library():
             it['f'] = [[f['id'], f['name'], f['size'], f['added']] for f in fs]
         (out_items if it['matched'] else others).append(it)
     others.sort(key=lambda i: -i['added'])
+    # plataformas presentes en la biblioteca (con su logo), de la que más títulos tiene a la que menos
+    count, logos = {}, {}
+    for it in out_items:
+        for n in it.get('pv', []):
+            count[n] = count.get(n, 0) + 1
+    for v in prov.values():
+        for n, l in (v.get('l') or {}).items():
+            logos.setdefault(n, l)
+    providers = [{'n': n, 'logo': logos.get(n, ''), 'c': c} for n, c in sorted(count.items(), key=lambda x: -x[1])]
     data = {'version': int(time.time() * 1000), 'items': out_items, 'others': others,
-            'trending': kv_get('trending') or [], 'genres': kv_get('genres') or {}}
+            'trending': kv_get('trending') or [], 'genres': kv_get('genres') or {},
+            'providers': providers, 'cinema': kv_get('cinema') or []}
     raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
     with LIB_LOCK:
         LIB.update(version=data['version'], json=raw, gz=gzip.compress(raw, 6), paths=paths, info=info,
@@ -550,6 +618,7 @@ def full_scan():
             STATUS['phase'] = 'Tendencias'
             refresh_genres()
             refresh_trending()
+            refresh_cinema()
         groups, meta = build_library()
         pending = [g for g in groups.values()
                    if g['k0'] not in meta or (meta[g['k0']].get('miss') and time.time() - meta[g['k0']]['miss'] > 7 * DAY)]
@@ -570,6 +639,19 @@ def full_scan():
                     for i, _ in enumerate(ex.map(fetch_details, need), 1):
                         STATUS['done'] = i
                         if i % 300 == 0:
+                            build_library()
+                build_library()
+            # plataformas (Netflix, HBO Max…): se comprueban cada 3 días porque los catálogos cambian
+            prov = load_providers()
+            with LIB_LOCK:
+                keys = list(LIB.get('keys', []))
+            need = [k for k in keys if k not in prov or time.time() - prov[k].get('at', 0) > PROV_EVERY]
+            if need:
+                STATUS.update(phase='Plataformas', done=0, total=len(need))
+                with concurrent.futures.ThreadPoolExecutor(6) as ex:
+                    for i, _ in enumerate(ex.map(fetch_providers, need), 1):
+                        STATUS['done'] = i
+                        if i % 500 == 0:
                             build_library()
                 build_library()
         STATUS['last_scan'] = int(time.time())
@@ -755,6 +837,10 @@ def parse_m3u(text):
             info = {'name': name or attrs.get('tvg-name') or 'Canal', 'logo': attrs.get('tvg-logo', ''),
                     'group': attrs.get('group-title', '') or 'Canales', 'tvg': attrs.get('tvg-id', '')}
         elif line and not line.startswith('#') and info:
+            # las listas «m3u_plus» traen también películas y series: no son canales en directo
+            if re.search(r'/(movie|movies|series|vod)/|\.(mp4|mkv|avi|mov|wmv|m4v)(\?|$)', line, re.I):
+                info = None
+                continue
             if re.match(r'^(https?|rtmp|rtsp|udp|rtp)://', line, re.I):
                 info['url'] = line
                 info['id'] = hashlib.sha1(line.encode()).hexdigest()[:10]
@@ -902,6 +988,24 @@ def load_epg(srcs):
         log('Guía de TV', e)
     finally:
         EPG_LOCK.release()
+
+
+RESP_CACHE = {}
+
+
+def cached_json(key, ttl, build):
+    """Respuestas grandes (lista de canales, guía) ya preparadas y comprimidas, para que se abran al instante."""
+    with LIVE_LOCK:
+        ver = (id(LIVE['epg']), id(LIVE['channels']))
+    hit = RESP_CACHE.get(key)
+    if hit and hit[0] == ver and time.time() - hit[1] < ttl:
+        return hit[2], hit[3]
+    raw = json.dumps(build(), ensure_ascii=False).encode()
+    gz = gzip.compress(raw, 5)
+    if len(RESP_CACHE) > 20:
+        RESP_CACHE.clear()
+    RESP_CACHE[key] = (ver, time.time(), raw, gz)
+    return raw, gz
 
 
 def live_listing():
@@ -1105,6 +1209,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != 'HEAD':
             self.wfile.write(body)
 
+    def send_pre(self, raw, gz):
+        if 'gzip' in self.headers.get('Accept-Encoding', ''):
+            return self.send(200, gz, headers={'Content-Encoding': 'gzip'}, gz_ok=False)
+        return self.send(200, raw, gz_ok=False)
+
     def err(self, code, msg):
         self.send(code, {'error': msg})
 
@@ -1305,7 +1414,10 @@ class Handler(BaseHTTPRequestHandler):
         if ep == 'live':
             with LIVE_LOCK:
                 err = LIVE['error']
-            return self.send(200, {'configured': bool(live_cfg()['accounts']), 'channels': live_listing(), 'error': err if u['admin'] else ''})
+            cfgd = bool(live_cfg()['accounts'])
+            raw, gz = cached_json(('live', cfgd, err if u['admin'] else ''), 30,
+                                  lambda: {'configured': cfgd, 'channels': live_listing(), 'error': err if u['admin'] else ''})
+            return self.send_pre(raw, gz)
         if ep == 'epg':
             try:
                 frm = float((q.get('from') or [0])[0]) or time.time() - 3 * 3600
@@ -1313,7 +1425,8 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 return self.err(400, 'parámetros')
             to = min(to, frm + 36 * 3600)
-            return self.send(200, {'from': frm, 'to': to, 'now': time.time(), 'channels': epg_grid(frm, to)})
+            raw, gz = cached_json(('epg', int(frm), int(to)), 300, lambda: {'from': frm, 'to': to, 'channels': epg_grid(frm, to)})
+            return self.send_pre(raw, gz)
         if ep == 'epg/info':
             try:
                 d = epg_desc((q.get('id') or [''])[0], float((q.get('s') or [0])[0]))

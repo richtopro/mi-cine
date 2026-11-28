@@ -86,6 +86,23 @@ main{padding-bottom:calc(76px + env(safe-area-inset-bottom));min-height:100vh}
 
 .row{margin:20px 0 4px;position:relative}
 .row h2{font-size:18px;margin:0 16px 9px;font-weight:700}
+.phead{display:flex;align-items:center;gap:10px;cursor:pointer}
+.phead .more{font-size:13px;color:#999;font-weight:600;margin-left:4px}
+.phead:hover .more{color:#fff}
+.plg{width:30px;height:30px;border-radius:7px;overflow:hidden;flex:none;display:grid;place-items:center;background:#222;font-size:18px}
+.plg img{width:100%;height:100%;object-fit:cover}
+.plg.big{width:72px;height:72px;border-radius:16px;font-size:40px}
+.provs{gap:10px}
+.ptile{flex:none;width:132px;background:#1c1c1c;border:2px solid transparent;border-radius:12px;padding:14px 10px 10px;color:#fff;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer}
+.ptile:hover,.tv .ptile:focus{border-color:#fff;background:#262626}
+.ptile .pl{width:58px;height:58px;border-radius:14px;overflow:hidden;display:grid;place-items:center;background:#2a2a2a;font-size:32px}
+.ptile .pl img{width:100%;height:100%;object-fit:cover}
+.ptile .pn{font-size:13px;font-weight:700;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ptile small{font-size:11px;color:#999}
+.ptile.cine .pl{background:linear-gradient(135deg,#f5c518,#e50914)}
+.provtop{display:flex;align-items:center;gap:16px;padding:calc(env(safe-area-inset-top) + 76px) 16px 4px}
+.provtop h1{margin:0 0 4px;font-size:30px}
+.provtop p{margin:0;max-width:640px}
 .scroller{display:flex;gap:8px;overflow-x:auto;padding:0 16px 8px;scroll-snap-type:x proximity;scrollbar-width:none;scroll-padding:16px}
 .scroller::-webkit-scrollbar{display:none}
 .card{flex:0 0 auto;width:min(29vw,170px);aspect-ratio:2/3;border-radius:6px;overflow:hidden;position:relative;background:var(--card);scroll-snap-align:start;cursor:pointer;transition:transform .2s}
@@ -160,6 +177,7 @@ html.srv .nosrv{display:none!important}
 .lvchips{padding:4px 0 10px!important}
 .gtop~.lvchips{padding:2px 16px 10px!important}
 .lvlist{display:flex;flex-direction:column;gap:6px}
+.lvmore{height:40px}
 .lvrow{display:flex;align-items:center;gap:12px;background:#181818;border-radius:8px;padding:8px;cursor:pointer;border:2px solid transparent;outline:none}
 .lvrow:hover{background:#202020}
 .lvrow.on{background:linear-gradient(90deg,#3d0b0e,#1b1b1b 75%);border-color:#e5091466}
@@ -1143,7 +1161,7 @@ async function enterApp(){
   show('app');
   $('#myAvatar').style.background = S.profile.color;
   $('#myAvatar').innerHTML = avatarInner(S.profile);
-  if (S.server) { setTab('home'); if (TV) setTimeout(() => { const b = $('#view .hero .btn.play') || $('#view .card'); b && focusEl(b); }, 150); return srvLoadLibrary(); }
+  if (S.server) { setTimeout(prefetchLive, 2500); setTab('home'); if (TV) setTimeout(() => { const b = $('#view .hero .btn.play') || $('#view .card'); b && focusEl(b); }, 150); return srvLoadLibrary(); }
   if (!S.demo) buildLibrary();
   setTab('home');
   if (S.demo) return;
@@ -1234,6 +1252,50 @@ function continueWatching(){
   }
   return out;
 }
+/* ---- Plataformas (Netflix, HBO Max…: dónde está hoy cada título en España, según JustWatch/TMDB) y Taquilla ---- */
+const CINE = '__cine';
+function provItems(name, type){
+  return S.items.filter(it => (!type || it.type === type) && it.pv?.includes(name)).sort((a, b) => b.pop - a.pop);
+}
+function cinemaItems(){
+  const now = Date.now();
+  return S.items.filter(it => it.type === 'movie' && (S.cinema?.has(it.tmdbId) || (it.d && now - Date.parse(it.d) < 120 * DAY && Date.parse(it.d) <= now)))
+    .sort((a, b) => (S.cinema?.has(b.tmdbId) - S.cinema?.has(a.tmdbId)) || Date.parse(b.d) - Date.parse(a.d));
+}
+function provList(type){ return (S.providers || []).map(p => ({ ...p, c: provItems(p.n, type).length })).filter(p => p.c >= 3); }
+function provLogo(p, size = 'w92'){
+  const t = `<b>${esc(p.n.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase())}</b>`;
+  return p.logo ? `<img src="${IMG + size + p.logo}" alt="" loading="lazy" onerror="this.outerHTML=this.nextElementSibling.innerHTML"><template>${t}</template>` : t;
+}
+function provStrip(type){
+  const ps = provList(type), cine = type !== 'tv' ? cinemaItems().length : 0;
+  if (!ps.length && !cine) return '';
+  return `<section class="row"><h2>Explora por plataforma</h2><div class="scroller provs">
+    ${cine >= 3 ? `<button class="ptile cine" data-prov="${CINE}"><span class="pl">🎟️</span><span class="pn">Taquilla</span><small>${cine} películas</small></button>` : ''}
+    ${ps.map(p => `<button class="ptile" data-prov="${esc(p.n)}"><span class="pl">${provLogo(p)}</span><span class="pn">${esc(p.n)}</span><small>${p.c} títulos</small></button>`).join('')}</div></section>`;
+}
+function provRow(p, items){
+  if (items.length < 3) return '';
+  return `<section class="row"><h2 class="phead" tabindex="0" data-prov="${esc(p.n)}"><span class="plg">${provLogo(p)}</span>En ${esc(p.n)}<span class="more">Ver todo ›</span></h2><div class="scroller">${items.slice(0, 30).map(x => card(x)).join('')}</div></section>`;
+}
+function provRows(type, max = 6){ return provList(type).slice(0, max).map(p => provRow(p, provItems(p.n, type))).join(''); }
+function cinemaRow(){
+  const it = cinemaItems(); if (it.length < 3) return '';
+  return `<section class="row"><h2 class="phead" tabindex="0" data-prov="${CINE}"><span class="plg">🎟️</span>Taquilla: de los cines a tu casa<span class="more">Ver todo ›</span></h2><div class="scroller">${it.slice(0, 30).map(x => card(x)).join('')}</div></section>`;
+}
+function provHtml(){
+  const cine = S.prov === CINE, p = (S.providers || []).find(x => x.n === S.prov) || { n: S.prov, logo: '' };
+  const f = S.provType || '';
+  const all = cine ? cinemaItems() : provItems(p.n);
+  const items = f ? all.filter(it => it.type === f) : all;
+  const nm = all.filter(it => it.type === 'movie').length, nt = all.length - nm;
+  return `<div class="provtop"><span class="plg big">${cine ? '🎟️' : provLogo(p, 'w154')}</span><div><h1>${cine ? 'Taquilla' : esc(p.n)}</h1>
+      <p class="small">${cine ? 'Películas que están ahora en los cines de España o que se estrenaron hace poco, y que ya tienes en tu biblioteca.' : `Lo que tienes en tu biblioteca que hoy está en ${esc(p.n)} en España.`}</p></div></div>
+    ${!cine && nm && nt ? `<div class="chips">${[['', 'Todo'], ['movie', `Películas (${nm})`], ['tv', `Series (${nt})`]].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-ptype="${k}">${l}</button>`).join('')}</div>` : ''}
+    <div class="grid" style="margin-top:12px">${items.map(it => card(it)).join('') || '<div class="empty">Nada por aquí.</div>'}</div>
+    <p class="small" style="padding:18px 16px 40px">Datos de disponibilidad: JustWatch (vía TMDB). Se actualizan cada 3 días.</p>`;
+}
+function openProv(name){ S.prov = name; S.provType = ''; setTab('prov'); }
 function recentReleases(type){
   const now = Date.now();
   return S.items.filter(it => (!type || it.type === type) && it.d && now - Date.parse(it.d) < 540 * DAY && Date.parse(it.d) <= now)
@@ -1482,6 +1544,7 @@ function render(){
   if (S.tab === 'home') v.innerHTML = homeHtml();
   else if (S.tab === 'tv' || S.tab === 'movie') v.innerHTML = typeHtml(S.tab);
   else if (S.tab === 'mylist') v.innerHTML = listHtml();
+  else if (S.tab === 'prov') v.innerHTML = provHtml();
   else if (S.tab === 'live') { v.innerHTML = liveHtml(); return; }
   else if (S.tab === 'requests') { v.innerHTML = requestsHtml(); bindRequests(); return; }
   else if (S.tab === 'search') { v.innerHTML = searchHtml(); const i = $('#q'); i.value = S.q || ''; i.oninput = () => { S.q = i.value; $('#results').innerHTML = searchResults(); decorateRows(); }; if (!S.q) setTimeout(() => i.focus(), 50); return; }
@@ -1497,13 +1560,16 @@ function homeHtml(){
   h += continueRow();
   if (tm.length >= 3) h += row('Top 10 películas en tendencia', tm, { top10: true });
   h += row('Mi lista', myList());
+  h += provStrip();
   h += row('Estrenos recientes', recentReleases());
+  h += cinemaRow();
   const mw = mostWatched();
   if (mw.length >= 3) h += row('Top 10: lo más visto en casa', mw, { top10: true });
   h += row('Añadido recientemente', recentlyAdded());
   if (tt.length >= 3) h += row('Top 10 series en tendencia', tt, { top10: true });
   if (tm.length < 3 && tt.length < 3) h += row('Top 10 en tendencia', top10(), { top10: true });
   h += row('Aclamadas por la crítica', topRated());
+  h += provRows(null, 4);
   const sg = sagas();
   genreRows(null).forEach((g, i) => { h += row(g.name, g.items); if (sg[i]) h += row(sagaTitle(sg[i].name), sg[i].items); if (i === 1) h += row('Series para maratonear', S.items.filter(it => it.type === 'tv' && it.eps?.length >= 8).sort((a, b) => b.pop - a.pop).slice(0, 20)); });
   if (S.others.length) h += row('Otros vídeos', S.others.slice(0, 40));
@@ -1529,6 +1595,8 @@ function typeHtml(type){
   h += row('Estrenos recientes', recentReleases(type));
   h += row(type === 'tv' ? 'Con episodios nuevos' : 'Añadidas recientemente', recentlyAdded(type));
   h += row('Mejor valoradas', topRated(type));
+  h += provStrip(type);
+  h += provRows(type, 8);
   if (type === 'movie') {
     sagas().slice(0, 12).forEach(s => h += row(sagaTitle(s.name), s.items));
     const short = S.items.filter(it => it.type === 'movie' && it.rt > 0 && it.rt <= 100).sort((a, b) => b.pop - a.pop).slice(0, 25);
@@ -1893,6 +1961,8 @@ document.addEventListener('click', e => {
   }
   const pi = t.closest('[data-playitem]'); if (pi) { const it = S.byKey[pi.dataset.playitem]; return play(it.key, nextUp(it).file.id); }
   const pl = t.closest('[data-play]'); if (pl) return play(pl.dataset.k, pl.dataset.play);
+  const pv = t.closest('[data-prov]'); if (pv) return openProv(pv.dataset.prov);
+  const pt = t.closest('[data-ptype]'); if (pt) { S.provType = pt.dataset.ptype; render(); return; }
   const gen = t.closest('[data-genre]'); if (gen) { S.genreFilter = +gen.dataset.genre || null; render(); return; }
   const tm = t.closest('[data-tmdb]'); if (tm) return window.open('https://www.themoviedb.org/' + tm.dataset.tmdb, '_blank');
   const k = t.closest('[data-k]'); if (k && !t.closest('#player')) return openDetail(k.dataset.k);
@@ -2011,6 +2081,7 @@ function srvExpand(d){
   S.byKey = {}; for (const it of all.concat(oth)) S.byKey[it.key] = it;
   setLib(all, oth);
   S.trending = d.trending || []; S.genres = { map: d.genres || {} };
+  S.providers = d.providers || []; S.cinema = new Set(d.cinema || []);
   S.libVersion = d.version;
 }
 let srvLoading = false;
@@ -2302,7 +2373,7 @@ window.miCineBack = () => {
 };
 function focusables(){
   const scope = !$('#menu').classList.contains('hidden') ? $('#menu') : !$('#sheet').classList.contains('hidden') ? $('#sheet') : document;
-  return [...scope.querySelectorAll('button, a[href], input, select, .card, .top10 .item, .ep, .prof, .ch, .lvrow')].filter(el => {
+  return [...scope.querySelectorAll('button, a[href], input, select, .card, .top10 .item, .ep, .prof, .ch, .lvrow, .phead')].filter(el => {
     if (el.classList.contains('card') && el.parentElement.classList.contains('item')) return false;
     if (el.closest('.hidden') || el.disabled) return false;
     const r = el.getBoundingClientRect();
@@ -2368,10 +2439,18 @@ if (TV) document.addEventListener('keydown', e => {
    TV en directo
    ========================================================= */
 let liveData = null, liveAt = 0;
+let livePromise = null;
 async function loadLive(force){
   if (!force && liveData && Date.now() - liveAt < 60e3) return liveData;
-  liveData = await api('live'); liveAt = Date.now(); return liveData;
+  if (!livePromise) livePromise = api('live').then(d => { liveData = d; liveAt = Date.now(); return d; }).finally(() => { livePromise = null; });
+  return livePromise;
 }
+// Al entrar en la app se descargan canales y guía en segundo plano: la sección abre al instante
+function prefetchLive(){
+  if (!S.server || document.hidden) return;
+  loadLive().then(d => { if (d.channels.length) return loadEpg(0); }).catch(() => {});
+}
+setInterval(prefetchLive, 5 * 60e3);
 let epgData = null, epgAt = 0, epgDay = 0;
 const LV = { sel: null, pvTimer: null, q: '', group: null, gsel: null, rows: [], n: 0 };
 const hm = s => new Date(s * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -2405,9 +2484,13 @@ async function loadEpg(off, force){
 function liveView(){ return LS.get('liveView', 'ch'); }
 function liveHtml(){
   setTimeout(async () => {
-    try { await loadLive(); } catch (e) { if ($('#liveBox')) $('#liveBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    const stale = liveData && Date.now() - liveAt >= 60e3;
+    if (!liveData) {
+      try { await loadLive(); } catch (e) { if ($('#liveBox')) $('#liveBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    }
     if (S.tab !== 'live' || !$('#liveBox')) return;
     paintLive();
+    if (stale) loadLive(true).then(() => { if (S.tab === 'live' && $('#lvList')) refreshRows(); }).catch(() => {});
     if (liveData.channels.length) loadEpg(epgDay).then(() => {
       if (S.tab !== 'live') return;
       if (liveView() === 'guide') paintGuide(); else if ($('#lvPrev')) { $('#lvPrev .pvup').outerHTML = upHtml(LV.sel); }
@@ -2458,7 +2541,32 @@ function channelsHtml(){
       <div class="lvlist" id="lvList">${listInner(list)}</div>
     </div></div>`;
 }
-function listInner(list){ return list.length ? list.map(rowHtml).join('') : '<div class="empty">Ningún canal coincide.</div>'; }
+function listInner(list){
+  LV.list = list; LV.ln = Math.min(list.length, Math.max(60, list.findIndex(c => c.id === LV.sel) + 20));
+  setTimeout(watchList, 0);
+  return list.length ? list.slice(0, LV.ln).map(rowHtml).join('') + (LV.ln < list.length ? '<div id="lvMore" class="lvmore"></div>' : '') : '<div class="empty">Ningún canal coincide.</div>';
+}
+function moreList(){
+  const m = $('#lvMore'); if (!m) return;
+  const next = LV.list.slice(LV.ln, LV.ln + 80); LV.ln += next.length;
+  m.insertAdjacentHTML('beforebegin', next.map(rowHtml).join(''));
+  if (LV.ln >= LV.list.length) m.remove();
+}
+let lvObs = null;
+function watchList(){
+  lvObs?.disconnect();
+  const m = $('#lvMore'); if (!m) return;
+  lvObs = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { moreList(); const n = $('#lvMore'); if (n) { lvObs.disconnect(); lvObs.observe(n); } } }, { rootMargin: '800px' });
+  lvObs.observe(m);
+}
+function refreshRows(){
+  const by = new Map(liveData.channels.map(c => [c.id, c]));
+  for (const r of document.querySelectorAll('.lvrow')) {
+    const c = by.get(r.dataset.lsel); if (!c?.now) continue;
+    r.querySelector('.np').textContent = c.now.t;
+    const i = r.querySelector('.prog i'); if (i) i.style.width = chPct(c.now) + '%';
+  }
+}
 function upHtml(id){
   const c = liveData.channels.find(x => x.id === id); if (!c) return '<div class="pvup"></div>';
   const now = Date.now() / 1000;
@@ -2621,11 +2729,7 @@ setInterval(async () => {
   if (ln && epgData) { const now = Date.now() / 1000, x = (now - epgData.from) / 60 * GPX(); ln.style.left = CHW() + x + 'px'; const lb = $('#gLbl'); if (lb) { lb.style.left = x + 'px'; lb.textContent = hm(now); } }
   if ($('#lvList')) {
     try { await loadLive(); } catch { return; }
-    for (const r of document.querySelectorAll('.lvrow')) {
-      const c = liveData.channels.find(x => x.id === r.dataset.lsel); if (!c?.now) continue;
-      r.querySelector('.np').textContent = c.now.t;
-      const i = r.querySelector('.prog i'); if (i) i.style.width = chPct(c.now) + '%';
-    }
+    refreshRows();
   }
 }, 60e3);
 
