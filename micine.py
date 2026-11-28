@@ -583,7 +583,33 @@ SUGGESTED_EPG = 'https://www.tdtchannels.com/epg/TV.xml.gz'
 
 
 def live_cfg():
-    return kv_get('live_cfg') or {'m3u': [], 'epg': ''}
+    """{'accounts': [{'name', 'm3u', 'max'}], 'epg'}  (max 0 = sin límite). Acepta el formato antiguo {'m3u': [...]}."""
+    c = kv_get('live_cfg') or {}
+    accts = c.get('accounts')
+    if accts is None:
+        accts = [{'name': 'Lista %d' % (i + 1), 'm3u': u, 'max': 0} for i, u in enumerate(c.get('m3u') or [])]
+    return {'accounts': accts, 'epg': c.get('epg', '')}
+
+
+ACTIVE = {}          # índice de cuenta -> conexiones en uso ahora mismo
+ACTIVE_LOCK = threading.Lock()
+
+
+def pick_account(ch):
+    """Elige la primera lista que tenga este canal y una conexión libre."""
+    accts = live_cfg()['accounts']
+    with ACTIVE_LOCK:
+        for ai, url in ch['urls']:
+            mx = int(accts[ai].get('max') or 0) if ai < len(accts) else 0
+            if mx <= 0 or ACTIVE.get(ai, 0) < mx:
+                ACTIVE[ai] = ACTIVE.get(ai, 0) + 1
+                return ai, url
+    return None, None
+
+
+def release_account(ai):
+    with ACTIVE_LOCK:
+        ACTIVE[ai] = max(0, ACTIVE.get(ai, 0) - 1)
 
 
 def http_get(url, timeout=60):
@@ -626,26 +652,34 @@ def xmltv_time(s):
 
 def refresh_live(force=False):
     cfg = live_cfg()
-    if not cfg.get('m3u'):
+    if not cfg['accounts']:
         with LIVE_LOCK:
             LIVE.update(channels=[], by_id={}, epg={}, error='')
         return
     now = time.time()
     if force or now - LIVE['at'] > 6 * 3600 or not LIVE['channels']:
-        chans, errs = [], []
-        for u in cfg['m3u']:
+        merged, order, errs = {}, [], []
+        for ai, acct in enumerate(cfg['accounts']):
             try:
-                chans += parse_m3u(http_get(u).decode('utf-8', 'replace'))
+                chans = parse_m3u(http_get(acct['m3u']).decode('utf-8', 'replace'))
             except Exception as e:
-                errs.append('%s: %s' % (u[:60], e))
-        seen, uniq = set(), []
-        for c in chans:
-            if c['id'] not in seen:
-                seen.add(c['id'])
-                uniq.append(c)
+                errs.append('%s: %s' % (acct.get('name') or 'Lista %d' % (ai + 1), e))
+                continue
+            for c in chans:
+                key = (c['tvg'] or norm(c['name'])).lower()
+                if key not in merged:
+                    merged[key] = {'id': hashlib.sha1(key.encode()).hexdigest()[:10], 'name': c['name'], 'logo': c['logo'],
+                                   'group': c['group'], 'tvg': c['tvg'], 'urls': []}
+                    order.append(key)
+                m = merged[key]
+                if not any(a == ai for a, _ in m['urls']):
+                    m['urls'].append((ai, c['url']))
+                if not m['logo'] and c['logo']:
+                    m['logo'] = c['logo']
+        chans = [merged[k] for k in order]
         with LIVE_LOCK:
-            LIVE.update(channels=uniq, by_id={c['id']: c for c in uniq}, at=now, error='; '.join(errs))
-        log('TV en directo: %d canales' % len(uniq))
+            LIVE.update(channels=chans, by_id={c['id']: c for c in chans}, at=now, error='; '.join(errs))
+        log('TV en directo: %d canales de %d listas' % (len(chans), len(cfg['accounts'])))
     if cfg.get('epg') and (force or now - LIVE['epg_at'] > 12 * 3600):
         try:
             import xml.etree.ElementTree as ET
@@ -687,7 +721,7 @@ def live_listing():
             elif st >= now:
                 nxt = (t, st, sp)
                 break
-        out.append({'id': c['id'], 'name': c['name'], 'logo': c['logo'], 'group': c['group'], 'url': c['url'],
+        out.append({'id': c['id'], 'name': c['name'], 'logo': c['logo'], 'group': c['group'],
                     'now': {'t': cur[0], 's': cur[1], 'e': cur[2]} if cur else None,
                     'next': {'t': nxt[0], 's': nxt[1]} if nxt else None})
     return out
@@ -1029,14 +1063,28 @@ class Handler(BaseHTTPRequestHandler):
                 if u['admin'] or d['user_id'] == u['id']:
                     out.append(d)
             return self.send(200, {'requests': out, 'pending': sum(1 for d in out if d['status'] == 'pendiente')})
+        if ep == 'live/avail':
+            with LIVE_LOCK:
+                ch = LIVE['by_id'].get((q.get('id') or [''])[0])
+            if not ch:
+                return self.err(404, 'canal no encontrado')
+            accts = live_cfg()['accounts']
+            with ACTIVE_LOCK:
+                free = any((int(accts[ai].get('max') or 0) if ai < len(accts) else 0) <= 0 or ACTIVE.get(ai, 0) < int(accts[ai].get('max') or 0)
+                           for ai, _ in ch['urls'])
+            return self.send(200, {'free': free})
         if ep == 'live':
             with LIVE_LOCK:
                 err = LIVE['error']
-            return self.send(200, {'configured': bool(live_cfg().get('m3u')), 'channels': live_listing(), 'error': err if u['admin'] else ''})
+            return self.send(200, {'configured': bool(live_cfg()['accounts']), 'channels': live_listing(), 'error': err if u['admin'] else ''})
         if ep == 'admin/live' and u['admin']:
             with LIVE_LOCK:
                 n, ne = len(LIVE['channels']), len(LIVE['epg'])
-            return self.send(200, dict(live_cfg(), channels=n, epg_channels=ne, error=LIVE['error'],
+            cfg = live_cfg()
+            with ACTIVE_LOCK:
+                for ai, a in enumerate(cfg['accounts']):
+                    a['active'] = ACTIVE.get(ai, 0)
+            return self.send(200, dict(cfg, channels=n, epg_channels=ne, error=LIVE['error'],
                                        suggested={'m3u': SUGGESTED_M3U, 'epg': SUGGESTED_EPG}))
         if ep == 'admin/tmdbsearch' and u['admin']:
             qq = (q.get('q') or [''])[0].strip()
@@ -1143,11 +1191,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'ok': True})
         if ep == 'admin/live' and method == 'POST':
             b = self.body()
-            m3u = [s.strip() for s in (b.get('m3u') or []) if isinstance(s, str) and re.match(r'^https?://', s.strip())][:10]
+            accts = []
+            for a in (b.get('accounts') or [])[:10]:
+                u2 = str(a.get('m3u') or '').strip()
+                if not re.match(r'^https?://', u2):
+                    continue
+                try:
+                    mx = max(0, min(50, int(a.get('max') or 0)))
+                except ValueError:
+                    mx = 0
+                accts.append({'name': str(a.get('name') or '').strip()[:40] or 'Lista %d' % (len(accts) + 1), 'm3u': u2, 'max': mx})
             epg = str(b.get('epg') or '').strip()
             if epg and not re.match(r'^https?://', epg):
                 return self.err(400, 'La guía debe ser una dirección http(s)')
-            kv_set('live_cfg', {'m3u': m3u, 'epg': epg})
+            kv_set('live_cfg', {'accounts': accts, 'epg': epg})
             LIVE.update(at=0, epg_at=0)
             threading.Thread(target=refresh_live, args=(True,), daemon=True).start()
             return self.send(200, {'ok': True})
@@ -1281,40 +1338,55 @@ class Handler(BaseHTTPRequestHandler):
 
 
     def live_stream(self, cid):
-        """Canal en directo para el navegador: vídeo copiado + audio AAC, en MP4 fragmentado."""
+        """Canal en directo a través del servidor, eligiendo una lista con conexión libre.
+        /live/<id>     -> MP4 fragmentado para navegadores (audio AAC)
+        /live/<id>.ts  -> MPEG-TS copiado tal cual, para VLC y la app"""
         if not self.user():
             return self.err(401, 'sesión requerida')
+        cid = cid.split('?')[0]
+        as_ts = cid.endswith('.ts')
+        cid = cid[:-3] if as_ts else cid
         with LIVE_LOCK:
-            ch = LIVE['by_id'].get(cid.split('?')[0])
+            ch = LIVE['by_id'].get(cid)
         if not ch:
             return self.err(404, 'canal no encontrado')
         ff = tool('ffmpeg')
         if not ff:
             return self.err(501, 'ffmpeg no está instalado en el servidor')
-        cmd = [ff, '-hide_banner', '-loglevel', 'error', '-nostdin', '-user_agent', 'Mozilla/5.0']
-        if ch['url'].lower().startswith('http'):
-            cmd += ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']
-        cmd += ['-i', ch['url'], '-map', '0:v:0?', '-map', '0:a:0?', '-c:v', 'copy', '-c:a', 'aac', '-ac', '2', '-b:a', '160k',
-                '-sn', '-dn', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', 'pipe:1']
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        ai, url = pick_account(ch)
+        if ai is None:
+            return self.err(503, 'Todas las conexiones están ocupadas. Prueba en un rato.')
         try:
-            self.send_response(200)
-            self.send_header('Content-Type', 'video/mp4')
-            self.send_header('Cache-Control', 'no-store')
-            self.send_header('Connection', 'close')
-            self.end_headers()
-            self.close_connection = True
-            while True:
-                chunk = proc.stdout.read(128 * 1024)
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-        finally:
+            cmd = [ff, '-hide_banner', '-loglevel', 'error', '-nostdin', '-user_agent', 'Mozilla/5.0']
+            if url.lower().startswith('http'):
+                cmd += ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']
+            cmd += ['-i', url, '-map', '0:v:0?', '-map', '0:a?' if as_ts else '0:a:0?', '-sn', '-dn']
+            if as_ts:
+                cmd += ['-c', 'copy', '-f', 'mpegts', 'pipe:1']
+            else:
+                cmd += ['-c:v', 'copy', '-c:a', 'aac', '-ac', '2', '-b:a', '160k',
+                        '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', 'pipe:1']
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
             try:
-                proc.kill()
-                proc.wait(timeout=5)
-            except Exception:
-                pass
+                self.send_response(200)
+                self.send_header('Content-Type', 'video/mp2t' if as_ts else 'video/mp4')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                self.close_connection = True
+                while True:
+                    chunk = proc.stdout.read(128 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            finally:
+                try:
+                    proc.kill()
+                    proc.wait(timeout=5)
+                except Exception:
+                    pass
+        finally:
+            release_account(ai)
 
     def transcode(self, fid, full, q):
         """Vídeo copiado tal cual + audio convertido a AAC estéreo, en MP4 fragmentado (empieza en ?start=segundos)."""

@@ -1887,6 +1887,15 @@ function changePassword(){
 }
 
 /* ---------- panel de administración ---------- */
+function acctRow(a){
+  return `<div class="acct urow" style="flex-wrap:wrap">
+    <input type="text" class="an" placeholder="Nombre (ej. Lista 1)" value="${esc(a.name || '')}" style="flex:1;min-width:120px;margin:0">
+    <label class="small" style="display:flex;align-items:center;gap:6px">Conexiones <input type="number" class="am" min="0" max="50" value="${a.max || ''}" placeholder="∞" style="width:64px;background:#333;border:1px solid #555;border-radius:6px;color:#fff;padding:8px"></label>
+    ${a.active != null && a.max ? `<span class="small">${a.active}/${a.max} en uso</span>` : a.active ? `<span class="small">${a.active} en uso</span>` : ''}
+    <button class="mini danger" data-lvdel title="Quitar lista">✕</button>
+    <input type="text" class="au" placeholder="https://…/lista.m3u" value="${esc(a.m3u || '')}" style="flex-basis:100%;margin:6px 0 0;font-family:monospace;font-size:12px">
+  </div>`;
+}
 let admTimer = null;
 async function openAdmin(){
   const sh = $('#sheet');
@@ -1914,11 +1923,13 @@ async function renderAdmin(){
     ${st.media.map(m => `<div class="urow"><div class="nm">${esc(m.name)}<small>${esc(m.path)}</small></div><span class="small">${m.ok ? '✅ accesible' : '⚠️ no encontrada'}</span></div>`).join('')}
     ${rq ? `<h3>Peticiones</h3><div class="urow"><div class="nm">${rq.pending} pendiente${rq.pending === 1 ? '' : 's'}<small>${rq.requests.length} en total</small></div><button class="mini" id="admReq">Ver peticiones</button></div>` : ''}
     ${lv ? `<h3>TV en directo</h3>
-      <p class="small">Listas de canales M3U (una por línea) y, opcional, la guía de programación XMLTV. ${lv.channels ? `Ahora: <b style="color:#ddd">${lv.channels} canales</b>${lv.epg_channels ? `, ${lv.epg_channels} con guía` : ''}.` : ''}</p>
-      <textarea id="lvM3u" class="fld" rows="3" placeholder="https://…/lista.m3u" style="font-family:monospace;font-size:13px">${esc((lv.m3u || []).join('\n'))}</textarea>
-      <input type="text" id="lvEpg" placeholder="Guía XMLTV (opcional): https://…/guia.xml.gz" value="${esc(lv.epg || '')}">
+      <p class="small">Añade tus listas M3U. Si una lista tiene límite de conexiones, ponlo: cuando se llene, Mi Cine usará la siguiente. Vacío o 0 = sin límite.
+      ${lv.channels ? `<br>Ahora: <b style="color:#ddd">${lv.channels} canales</b>${lv.epg_channels ? `, ${lv.epg_channels} con guía` : ''}.` : ''}</p>
+      <div id="lvAccts">${(lv.accounts.length ? lv.accounts : [{ name: '', m3u: '', max: 3 }]).map(acctRow).join('')}</div>
+      <button class="mini" id="lvAdd">＋ Añadir otra lista</button>
+      <input type="text" id="lvEpg" placeholder="Guía de programación XMLTV (opcional): https://…/guia.xml.gz" value="${esc(lv.epg || '')}" style="margin-top:10px">
       ${lv.error ? `<p class="err">${esc(lv.error)}</p>` : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini ok" id="lvSave">Guardar canales</button><button class="mini" id="lvTdt">Usar TDTChannels (TDT gratuita de España)</button></div>` : ''}
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini ok" id="lvSave">Guardar canales</button><button class="mini" id="lvTdt">Añadir TDTChannels (TDT gratuita de España)</button></div>` : ''}
     <h3>Usuarios (${us.users.length})</h3>
     ${us.users.map(u => `<div class="urow" data-uid="${u.id}">
       <div class="nm">${esc(u.username)} ${u.admin ? '<span class="small">· admin</span>' : ''} ${u.disabled ? '<span class="small" style="color:#ff6b6b">· desactivado</span>' : ''}
@@ -1940,10 +1951,13 @@ async function renderAdmin(){
   S.admWasScanning = st.scanning;
   $('#admScan') && ($('#admScan').onclick = async () => { await api('admin/scan', { method: 'POST', body: {} }); setTimeout(renderAdmin, 800); });
   if ($('#admReq')) $('#admReq').onclick = () => { closeDetail(); setTab('requests'); };
-  if ($('#lvTdt')) $('#lvTdt').onclick = () => { $('#lvM3u').value = lv.suggested.m3u; $('#lvEpg').value = lv.suggested.epg; };
+  if ($('#lvAdd')) $('#lvAdd').onclick = () => $('#lvAccts').insertAdjacentHTML('beforeend', acctRow({ name: '', m3u: '', max: 3 }));
+  if ($('#lvAccts')) $('#lvAccts').onclick = e => { const x = e.target.closest('[data-lvdel]'); if (x) x.closest('.acct').remove(); };
+  if ($('#lvTdt')) $('#lvTdt').onclick = () => { $('#lvAccts').insertAdjacentHTML('beforeend', acctRow({ name: 'TDTChannels', m3u: lv.suggested.m3u, max: 0 })); if (!$('#lvEpg').value) $('#lvEpg').value = lv.suggested.epg; };
   if ($('#lvSave')) $('#lvSave').onclick = async () => {
+    const accounts = [...document.querySelectorAll('#lvAccts .acct')].map(r => ({ name: r.querySelector('.an').value.trim(), m3u: r.querySelector('.au').value.trim(), max: +r.querySelector('.am').value || 0 })).filter(a => a.m3u);
     try {
-      await api('admin/live', { method: 'POST', body: { m3u: $('#lvM3u').value.split('\n').map(s => s.trim()).filter(Boolean), epg: $('#lvEpg').value.trim() } });
+      await api('admin/live', { method: 'POST', body: { accounts, epg: $('#lvEpg').value.trim() } });
       toast('Guardado. Cargando canales…'); liveData = null; setTimeout(renderAdmin, 4000);
     } catch (e) { toast(e.message); }
   };
@@ -2109,10 +2123,26 @@ function liveInner(){
   return `<div class="chips" style="margin-bottom:12px">${['', ...groups].map(g => `<button class="chip ${(S.liveGroup || '') === g ? 'on' : ''}" data-lgroup="${esc(g)}">${esc(g || 'Todos')}</button>`).join('')}</div>
     <div class="chgrid">${list.map(tile).join('')}</div>`;
 }
-function playLive(id){
+async function playLive(id){
   const ch = liveData?.channels.find(c => c.id === id); if (!ch) return;
   stopHeroTrailer();
-  if (window.MiCineAndroid) { MiCineAndroid.play(JSON.stringify({ url: ch.url, title: ch.name, subtitle: 'En directo', start: 0, fileId: 'live', key: 'live', hasNext: false })); return; }
+  try { const a = await api('live/avail?id=' + id); if (!a.free) { toast('Todas las conexiones de este canal están ocupadas. Prueba en un rato.'); return; } } catch {}
+  let tok = LS.get('srvToken', '');
+  if (!tok) { try { tok = (await api('token')).token; LS.set('srvToken', tok); } catch {} }
+  const tsUrl = new URL(`live/${id}.ts?t=${encodeURIComponent(tok)}`, location.href).href;
+  if (window.MiCineAndroid) { MiCineAndroid.play(JSON.stringify({ url: tsUrl, title: ch.name, subtitle: 'En directo', start: 0, fileId: 'live', key: 'live', hasNext: false })); return; }
+  // iPhone/iPad y Android sin la app: el canal se abre en VLC (o en otro reproductor en Android)
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (isIOS) {
+    toast('Abriendo «' + ch.name + '» en VLC… Si no se abre, instala VLC desde la App Store.');
+    location.href = 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(tsUrl);
+    return;
+  }
+  if (/Android/i.test(ua)) {
+    location.href = `intent:${tsUrl}#Intent;action=android.intent.action.VIEW;type=video/*;S.title=${encodeURIComponent(ch.name)};end`;
+    return;
+  }
   const p = $('#player');
   S.cur = { live: true, it: { title: ch.name, key: 'live' }, file: { id: 'live' }, started: false };
   p.innerHTML = `<div class="pbar"><button class="hbtn" id="pBack">${ICON.back}</button><div class="ttl"><span class="live-dot"></span>${esc(ch.name)}<small>${ch.now ? esc(ch.now.t) : 'En directo'}</small></div></div>
