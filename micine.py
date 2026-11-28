@@ -22,6 +22,7 @@ import getpass
 import gzip
 import hashlib
 import hmac
+import io
 import json
 import mimetypes
 import os
@@ -781,10 +782,19 @@ def refresh_live(force=False):
         return
     now = time.time()
     if force or now - LIVE['at'] > 6 * 3600 or not LIVE['channels']:
-        merged, order, errs = {}, [], []
+        merged, order, errs, m3u_epg = {}, [], [], []
         for ai, acct in enumerate(cfg['accounts']):
             try:
-                chans = parse_m3u(http_get(acct['m3u']).decode('utf-8', 'replace'))
+                text = http_get(acct['m3u']).decode('utf-8', 'replace')
+                chans = parse_m3u(text)
+                head = text[:2000].split('\n', 1)[0]
+                for u in re.findall(r'(?:url-tvg|x-tvg-url|tvg-url)="([^"]+)"', head):
+                    m3u_epg += [x for x in re.split(r'[,\s]+', u) if x.startswith('http')]
+                xm = re.match(r'^(https?://[^/]+)/get\.php\?(.*)$', acct['m3u'])
+                if xm:   # lista de tipo Xtream: su guía está en xmltv.php con el mismo usuario
+                    qs = urllib.parse.parse_qs(xm.group(2))
+                    if qs.get('username') and qs.get('password'):
+                        m3u_epg.append('%s/xmltv.php?%s' % (xm.group(1), urllib.parse.urlencode({'username': qs['username'][0], 'password': qs['password'][0]})))
             except Exception as e:
                 errs.append('%s: %s' % (acct.get('name') or 'Lista %d' % (ai + 1), e))
                 continue
@@ -801,47 +811,97 @@ def refresh_live(force=False):
                     m['logo'] = c['logo']
         chans = [merged[k] for k in order]
         with LIVE_LOCK:
-            LIVE.update(channels=chans, by_id={c['id']: c for c in chans}, at=now, error='; '.join(errs))
+            LIVE.update(channels=chans, by_id={c['id']: c for c in chans}, at=now, error='; '.join(errs),
+                        m3u_epg=list(dict.fromkeys(m3u_epg)))
+        LIVE['epg_at'] = 0   # canales nuevos: volver a emparejar la guía
         log('TV en directo: %d canales de %d listas' % (len(chans), len(cfg['accounts'])))
-    if cfg.get('epg') and (force or now - LIVE['epg_at'] > 6 * 3600):
-        try:
-            import xml.etree.ElementTree as ET
-            import io
-            epg, ids, names = {}, set(), {}
-            emap, want = {}, None
-            lo, hi = now - 27 * 3600, now + 48 * 3600
-            for ev, el in ET.iterparse(io.BytesIO(http_get(cfg['epg'], 180)), events=('end',)):
-                if el.tag == 'programme':
-                    if want is None:   # ya tenemos todos los <channel>: emparejar por id o por nombre
-                        for c in LIVE['channels']:
-                            k = c['tvg'] if c['tvg'] in ids else names.get(norm(c['name'])) or names.get(norm(re.sub(r'\b(hd|fhd|uhd|4k|sd)\b', '', c['name'], flags=re.I)))
-                            if k:
-                                emap[c['id']] = k
-                        want = set(emap.values())
-                    ch = el.get('channel')
-                    if ch in want:
-                        st, sp = xmltv_time(el.get('start')), xmltv_time(el.get('stop'))
-                        if sp > lo and st < hi:
-                            t = el.findtext('title') or ''
-                            d = re.sub(r'\s+', ' ', el.findtext('desc') or '').strip()[:400]
-                            cat = el.findtext('category') or ''
-                            epg.setdefault(ch, []).append((st, sp, t, d, cat))
-                    el.clear()
-                elif el.tag == 'channel':
-                    cid = el.get('id')
-                    ids.add(cid)
-                    for dn in el.findall('display-name'):
-                        if dn.text:
-                            names.setdefault(norm(dn.text), cid)
-                    el.clear()
-            for v in epg.values():
-                v.sort()
-            with LIVE_LOCK:
-                LIVE.update(epg=epg, epg_at=now, emap=emap)
-            log('Guía de TV: %d canales con programación' % len(epg))
-        except Exception as e:
-            log('Guía de TV', e)
-            LIVE['epg_at'] = now - 5 * 3600  # reintentar en 1 h
+    srcs = epg_sources(cfg)
+    if srcs and (force or now - LIVE['epg_at'] > 6 * 3600):
+        LIVE['epg_at'] = now
+        threading.Thread(target=load_epg, args=(srcs,), daemon=True).start()
+
+
+def epg_sources(cfg):
+    """Guías a cargar: las escritas en el panel + la que anuncia cada lista M3U (url-tvg) + la de Xtream (xmltv.php)."""
+    out = [u for u in re.split(r'[\s,;]+', cfg.get('epg') or '') if re.match(r'^https?://', u)]
+    with LIVE_LOCK:
+        extra = list(LIVE.get('m3u_epg', []))
+    for u in extra:
+        if u not in out:
+            out.append(u)
+    return out
+
+
+def chan_key(name):
+    """Nombre de canal normalizado para emparejar lista y guía: «ES: LA 1 HD» -> «la 1»."""
+    n = re.sub(r'^\s*(\|?[A-Za-z]{2,3}\|?\s*[:|\-]+\s*)', '', name or '')
+    n = re.sub(r'\b(hd|fhd|uhd|4k|sd|hevc|h265|1080p?|720p?|backup|bk|alt)\b', ' ', n, flags=re.I)
+    n = re.sub(r'[\(\[].*?[\)\]]', ' ', n)
+    return norm(n)
+
+
+EPG_LOCK = threading.Lock()
+
+
+def load_epg(srcs):
+    """Descarga y lee las guías XMLTV (en streaming: sirve también para guías de cientos de MB)."""
+    if not EPG_LOCK.acquire(blocking=False):
+        return
+    try:
+        import xml.etree.ElementTree as ET
+        now = time.time()
+        lo, hi = now - 27 * 3600, now + 48 * 3600
+        with LIVE_LOCK:
+            chans = list(LIVE['channels'])
+        epg, emap, notes = {}, {}, []
+        for si, url in enumerate(srcs):
+            ids, names, want, n = set(), {}, None, 0
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (MiCine)'})
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    buf = io.BufferedReader(r, 1 << 16)
+                    src = gzip.GzipFile(fileobj=buf) if buf.peek(2)[:2] == b'\x1f\x8b' else buf
+                    for ev, el in ET.iterparse(src, events=('end',)):
+                        if el.tag == 'programme':
+                            if want is None:   # ya están todos los <channel>: emparejar por id o por nombre
+                                for c in chans:
+                                    if c['id'] in emap:
+                                        continue
+                                    k = c['tvg'] if c['tvg'] in ids else (names.get(c['tvg'].lower()) if c['tvg'] else None) \
+                                        or names.get(norm(c['name'])) or names.get(chan_key(c['name']))
+                                    if k:
+                                        emap[c['id']] = '%d|%s' % (si, k)
+                                want = {v.split('|', 1)[1] for v in emap.values() if v.startswith('%d|' % si)}
+                            ch = el.get('channel')
+                            if ch in want:
+                                st, sp = xmltv_time(el.get('start')), xmltv_time(el.get('stop'))
+                                if sp > lo and st < hi:
+                                    d = re.sub(r'\s+', ' ', el.findtext('desc') or '').strip()[:300]
+                                    epg.setdefault('%d|%s' % (si, ch), []).append((st, sp, el.findtext('title') or '', d, el.findtext('category') or ''))
+                                    n += 1
+                            el.clear()
+                        elif el.tag == 'channel':
+                            cid = el.get('id') or ''
+                            ids.add(cid)
+                            names.setdefault(cid.lower(), cid)
+                            for dn in el.findall('display-name'):
+                                if dn.text:
+                                    names.setdefault(norm(dn.text), cid)
+                                    names.setdefault(chan_key(dn.text), cid)
+                            el.clear()
+                notes.append('%s: %d canales en la guía, %d programas' % (urllib.parse.urlsplit(url).hostname, len(ids), n))
+            except Exception as e:
+                notes.append('%s: %s' % (urllib.parse.urlsplit(url).hostname, e))
+                log('Guía de TV', url.split('?')[0], e)
+        for v in epg.values():
+            v.sort()
+        with LIVE_LOCK:
+            LIVE.update(epg=epg, emap=emap, epg_note='; '.join(notes))
+        log('Guía de TV: %d de %d canales con programación (%s)' % (len({k for k in emap if emap[k] in epg}), len(chans), '; '.join(notes)))
+    except Exception as e:
+        log('Guía de TV', e)
+    finally:
+        EPG_LOCK.release()
 
 
 def live_listing():
@@ -1269,7 +1329,12 @@ class Handler(BaseHTTPRequestHandler):
             with ACTIVE_LOCK:
                 for ai, a in enumerate(cfg['accounts']):
                     a['active'] = ACTIVE.get(ai, 0)
-            return self.send(200, dict(cfg, channels=n, epg_channels=ne, error=LIVE['error'],
+            with LIVE_LOCK:
+                emap, epgd = LIVE.get('emap', {}), LIVE['epg']
+                matched = sum(1 for k in emap.values() if k in epgd)
+            srcs = [urllib.parse.urlsplit(x).hostname for x in epg_sources(cfg)]
+            return self.send(200, dict(cfg, channels=n, epg_channels=matched, error=LIVE['error'], epg_note=LIVE.get('epg_note', ''),
+                                       epg_auto=srcs, epg_loading=EPG_LOCK.locked(),
                                        suggested={'m3u': SUGGESTED_M3U, 'epg': SUGGESTED_EPG}))
         if ep == 'admin/tmdbsearch' and u['admin']:
             qq = (q.get('q') or [''])[0].strip()

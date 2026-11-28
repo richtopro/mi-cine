@@ -2195,10 +2195,12 @@ async function renderAdmin(){
     ${rq ? `<h3>Peticiones</h3><div class="urow"><div class="nm">${rq.pending} pendiente${rq.pending === 1 ? '' : 's'}<small>${rq.requests.length} en total</small></div><button class="mini" id="admReq">Ver peticiones</button></div>` : ''}
     ${lv ? `<h3>TV en directo</h3>
       <p class="small">Añade tus listas M3U. Si una lista tiene límite de conexiones, ponlo: cuando se llene, Mi Cine usará la siguiente. Vacío o 0 = sin límite.
-      ${lv.channels ? `<br>Ahora: <b style="color:#ddd">${lv.channels} canales</b>${lv.epg_channels ? `, ${lv.epg_channels} con guía` : ''}.` : ''}</p>
+      ${lv.channels ? `<br>Ahora: <b style="color:#ddd">${lv.channels} canales</b>, <b style="color:#ddd">${lv.epg_channels || 0} con guía</b>.` : ''}
+      <br>Guía de programación: ${lv.epg_loading ? '⏳ cargando ahora mismo…' : lv.epg_auto?.length ? 'se usa ' + lv.epg_auto.map(esc).join(', ') : '⚠️ ninguna. Pon la dirección XMLTV abajo.'}
+      ${lv.epg_note ? `<br><small>${esc(lv.epg_note)}</small>` : ''}</p>
       <div id="lvAccts">${(lv.accounts.length ? lv.accounts : [{ name: '', m3u: '', max: 3 }]).map(acctRow).join('')}</div>
       <button class="mini" id="lvAdd">＋ Añadir otra lista</button>
-      <input type="text" id="lvEpg" placeholder="Guía de programación XMLTV (opcional): https://…/guia.xml.gz" value="${esc(lv.epg || '')}" style="margin-top:10px">
+      <input type="text" id="lvEpg" placeholder="Guía XMLTV extra (opcional; las listas Xtream y las que la anuncian se detectan solas)" value="${esc(lv.epg || '')}" style="margin-top:10px">
       ${lv.error ? `<p class="err">${esc(lv.error)}</p>` : ''}
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="mini ok" id="lvSave">Guardar canales</button><button class="mini" id="lvTdt">Añadir TDTChannels (TDT gratuita de España)</button></div>` : ''}
     <h3>Usuarios (${us.users.length})</h3>
