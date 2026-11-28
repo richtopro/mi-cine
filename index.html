@@ -193,7 +193,7 @@ html.srv .nosrv{display:none!important}
 .lvrow .pl{background:none;border:0;color:var(--red);padding:4px;display:none}
 .lvrow .pl .i{width:26px;height:26px}
 .lvrow.on .pl{display:block}
-.pvbox{position:relative;aspect-ratio:16/9;background:radial-gradient(circle at 50% 42%,#2b2b2b,#090909 75%);border-radius:10px;overflow:hidden}
+.pvbox{cursor:pointer;position:relative;aspect-ratio:16/9;background:radial-gradient(circle at 50% 42%,#2b2b2b,#090909 75%);border-radius:10px;overflow:hidden}
 .pvbox video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .5s;background:#000}
 .pvbox.playing video{opacity:1}
 .pvlogo{position:absolute;inset:0;display:grid;place-items:center;font-size:44px;font-weight:800;color:#777}
@@ -305,6 +305,12 @@ html.srv .nosrv{display:none!important}
 .section-title{font-size:26px;font-weight:800;margin:0;padding:calc(env(safe-area-inset-top) + 62px) 16px 6px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding:4px 16px 4px;scrollbar-width:none}
 .chips::-webkit-scrollbar{display:none}
+.chips{position:relative;scroll-behavior:smooth}
+.chip{flex:none;white-space:nowrap}
+.chipar{position:sticky;z-index:3;flex:none;width:34px;margin:0 -34px 0 0;border:0;border-radius:50%;background:#2b2b2bee;color:#fff;font-size:24px;line-height:1;display:none;align-self:center;height:34px;box-shadow:0 0 12px 8px var(--bg)}
+.chipar.l{left:0}
+.chipar.r{right:0;margin:0 0 0 -34px;order:99}
+.chips.ovl .chipar.l,.chips.ovr .chipar.r{display:block}
 .chip{flex:none;background:none;border:1px solid #777;border-radius:18px;padding:6px 14px;font-size:13px;color:#ddd}
 .chip.on{background:#fff;color:#000;border-color:#fff}
 .searchbox{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top) + 58px) 16px 12px}
@@ -1379,6 +1385,23 @@ function pickHero(type){
   return [it, `Nº ${pos} en ${it.type === 'tv' ? 'series' : 'películas'} de tu colección`];
 }
 
+// Barras de categorías: flechas ‹ › cuando no caben, rueda del ratón en horizontal y foco del mando visible
+function chipNav(root = document){
+  for (const c of root.querySelectorAll('.chips')) {
+    if (c.dataset.nav) { c._upd?.(); continue; }
+    c.dataset.nav = 1;
+    const mk = (dir) => { const b = document.createElement('button'); b.type = 'button'; b.tabIndex = -1; b.className = 'chipar ' + (dir < 0 ? 'l' : 'r'); b.textContent = dir < 0 ? '‹' : '›'; b.setAttribute('aria-label', dir < 0 ? 'Anteriores' : 'Siguientes'); b.onclick = e => { e.stopPropagation(); c.scrollBy({ left: dir * c.clientWidth * 0.7, behavior: 'smooth' }); }; return b; };
+    c.prepend(mk(-1)); c.append(mk(1));
+    c._upd = () => { const over = c.scrollWidth > c.clientWidth + 4; c.classList.toggle('ovl', over && c.scrollLeft > 6); c.classList.toggle('ovr', over && c.scrollLeft + c.clientWidth < c.scrollWidth - 6); };
+    c.addEventListener('scroll', c._upd, { passive: true });
+    c.addEventListener('wheel', e => { if (c.scrollWidth > c.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { c.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
+    c.addEventListener('focusin', e => { const b = e.target.closest('.chip'); if (b) b.scrollIntoView({ inline: 'nearest', block: 'nearest' }); });
+    c._upd();
+  }
+}
+let chipRaf = 0;
+new MutationObserver(() => { if (!chipRaf) chipRaf = requestAnimationFrame(() => { chipRaf = 0; chipNav(); }); }).observe(document.body, { childList: true, subtree: true });
+document.addEventListener('dblclick', e => { const r = e.target.closest?.('[data-lsel]'); if (r) playLive(r.dataset.lsel); });
 function decorateRows(){
   for (const sc of document.querySelectorAll('#view .row .scroller')) {
     const row = sc.parentElement;
@@ -1547,7 +1570,13 @@ function render(){
   else if (S.tab === 'prov') v.innerHTML = provHtml();
   else if (S.tab === 'live') { v.innerHTML = liveHtml(); return; }
   else if (S.tab === 'requests') { v.innerHTML = requestsHtml(); bindRequests(); return; }
-  else if (S.tab === 'search') { v.innerHTML = searchHtml(); const i = $('#q'); i.value = S.q || ''; i.oninput = () => { S.q = i.value; $('#results').innerHTML = searchResults(); decorateRows(); }; if (!S.q) setTimeout(() => i.focus(), 50); return; }
+  else if (S.tab === 'search') {
+    const had = document.activeElement?.id === 'q';
+    v.innerHTML = searchHtml(); const i = $('#q'); i.value = S.q || '';
+    i.oninput = () => { S.q = i.value; $('#results').innerHTML = searchResults(); decorateRows(); };
+    if (had || (!S.q && !TV)) setTimeout(() => i.focus({ preventScroll: true }), 50);
+    return;
+  }
   window.scrollTo(0, y);
   decorateRows();
   startHeroTrailer();
@@ -1939,7 +1968,13 @@ document.addEventListener('click', e => {
   const ml = t.closest('[data-mylist]'); if (ml) return toggleList(ml.dataset.mylist);
   const fv = t.closest('[data-fav]'); if (fv) return toggleFav(fv.dataset.fav);
   const lv = t.closest('[data-live]'); if (lv) return playLive(lv.dataset.live);
-  const ls = t.closest('[data-lsel]'); if (ls) return LV.sel === ls.dataset.lsel && $('#pvVid') ? playLive(ls.dataset.lsel) : selectChannel(ls.dataset.lsel);
+  const ls = t.closest('[data-lsel]'); if (ls) {
+    // con el dedo o el ratón solo se elige (vista previa); abrir: «Ver ahora», tocar la vista previa o doble clic.
+    // Con el mando (OK sobre un canal ya elegido) sí se abre.
+    if (e.detail === 0 && LV.sel === ls.dataset.lsel && $('#pvVid')) return playLive(ls.dataset.lsel);
+    return selectChannel(ls.dataset.lsel);
+  }
+  const pb = t.closest('.pvbox'); if (pb && LV.sel) return playLive(LV.sel);
   const gp = t.closest('[data-gp]'); if (gp) return onGuideClick(gp);
   const gd = t.closest('[data-gday]'); if (gd) {
     epgDay = +gd.dataset.gday; LV.gsel = null; $('#liveBox').innerHTML = guideHtml();
@@ -1972,7 +2007,15 @@ addEventListener('popstate', () => {
   if (!$('#player').classList.contains('hidden')) closePlayer(true);
   else if (S.detail) closeDetail(true);
 });
-let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(render, 250); });
+// Solo se redibuja si cambia el ANCHO (girar la pantalla). Al abrirse el teclado del móvil cambia la altura:
+// si redibujáramos, el buscador perdería el foco, se cerraría el teclado y volvería a abrirse sin parar.
+let rT, lastW = innerWidth;
+addEventListener('resize', () => {
+  if (Math.abs(innerWidth - lastW) < 40) return;
+  lastW = innerWidth;
+  if (document.activeElement?.matches('input, textarea')) return;
+  clearTimeout(rT); rT = setTimeout(render, 250);
+});
 
 let toastT;
 function toast(msg, busy){
