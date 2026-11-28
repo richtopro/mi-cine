@@ -480,7 +480,7 @@ select{background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:4px;pad
   <header class="top" id="topbar">
     <div class="logo">Mi Cine</div>
     <div class="desk-tabs" id="deskTabs">
-      <button data-tab="home">Inicio</button><button data-tab="tv">Series</button><button data-tab="movie">Películas</button><button data-tab="mylist">Mi lista</button><button data-tab="live" class="srvonly">TV en directo</button><button data-tab="requests" class="srvonly">Peticiones</button><button data-tab="search">Buscar</button>
+      <button data-tab="home">Inicio</button><button data-tab="tv">Series</button><button data-tab="movie">Películas</button><button data-tab="cine" class="srvonly">Taquilla</button><button data-tab="mylist">Mi lista</button><button data-tab="live" class="srvonly">TV en directo</button><button data-tab="requests" class="srvonly">Peticiones</button><button data-tab="search">Buscar</button>
     </div>
     <div class="sp"></div>
     <button class="hbtn" data-tab="search" aria-label="Buscar"><svg class="i" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg></button>
@@ -491,6 +491,7 @@ select{background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:4px;pad
     <button data-tab="home"><svg class="i" viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h5v-6h4v6h5v-8h3z"/></svg>Inicio</button>
     <button data-tab="tv"><svg class="i" viewBox="0 0 24 24"><path d="M21 3H3a2 2 0 00-2 2v12a2 2 0 002 2h5v2h8v-2h5a2 2 0 002-2V5a2 2 0 00-2-2zm0 14H3V5h18z"/></svg>Series</button>
     <button data-tab="movie"><svg class="i" viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V4z"/></svg>Películas</button>
+    <button data-tab="cine" class="srvonly"><svg class="i" viewBox="0 0 24 24"><path d="M22 10V6a2 2 0 00-2-2H4a2 2 0 00-2 2v4a2 2 0 010 4v4a2 2 0 002 2h16a2 2 0 002-2v-4a2 2 0 010-4zm-9 7.5h-2v-2h2zm0-4.5h-2v-2h2zm0-4.5h-2v-2h2z"/></svg>Taquilla</button>
     <button data-tab="mylist" class="nosrv"><svg class="i" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>Mi lista</button>
     <button data-tab="live" class="srvonly"><svg class="i" viewBox="0 0 24 24"><path d="M21 6h-7.6l3.3-3.3-.7-.7L12 6 8 2l-.7.7L10.6 6H3a2 2 0 00-2 2v11a2 2 0 002 2h18a2 2 0 002-2V8a2 2 0 00-2-2zm0 13H3V8h18v11z"/></svg>TV</button>
     <button data-tab="requests" class="srvonly"><svg class="i" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5 11h-4v4h-2v-4H7v-2h4V7h2v4h4v2z"/></svg>Pedir</button>
@@ -1274,10 +1275,9 @@ function provLogo(p, size = 'w92'){
   return p.logo ? `<img src="${IMG + size + p.logo}" alt="" loading="lazy" onerror="this.outerHTML=this.nextElementSibling.innerHTML"><template>${t}</template>` : t;
 }
 function provStrip(type){
-  const ps = provList(type), cine = type !== 'tv' ? cinemaItems().length : 0;
-  if (!ps.length && !cine) return '';
+  const ps = provList(type);
+  if (!ps.length) return '';
   return `<section class="row"><h2>Explora por plataforma</h2><div class="scroller provs">
-    ${cine >= 3 ? `<button class="ptile cine" data-prov="${CINE}"><span class="pl">🎟️</span><span class="pn">Taquilla</span><small>${cine} películas</small></button>` : ''}
     ${ps.map(p => `<button class="ptile" data-prov="${esc(p.n)}"><span class="pl">${provLogo(p)}</span><span class="pn">${esc(p.n)}</span><small>${p.c} títulos</small></button>`).join('')}</div></section>`;
 }
 function provRow(p, items){
@@ -1298,8 +1298,8 @@ function provHtml(){
   return `<div class="provtop"><span class="plg big">${cine ? '🎟️' : provLogo(p, 'w154')}</span><div><h1>${cine ? 'Taquilla' : esc(p.n)}</h1>
       <p class="small">${cine ? 'Películas que están ahora en los cines de España o que se estrenaron hace poco, y que ya tienes en tu biblioteca.' : `Lo que tienes en tu biblioteca que hoy está en ${esc(p.n)} en España.`}</p></div></div>
     ${!cine && nm && nt ? `<div class="chips">${[['', 'Todo'], ['movie', `Películas (${nm})`], ['tv', `Series (${nt})`]].map(([k, l]) => `<button class="chip ${f === k ? 'on' : ''}" data-ptype="${k}">${l}</button>`).join('')}</div>` : ''}
-    <div class="grid" style="margin-top:12px">${items.map(it => card(it)).join('') || '<div class="empty">Nada por aquí.</div>'}</div>
-    <p class="small" style="padding:18px 16px 40px">Datos de disponibilidad: JustWatch (vía TMDB). Se actualizan cada 3 días.</p>`;
+    ${items.length ? `<div class="grid" style="margin-top:12px">${items.map(it => card(it)).join('')}</div>` : `<div class="empty">${cine ? 'Ahora mismo ninguna película de tu biblioteca está en los cines ni se ha estrenado en los últimos 4 meses.' : 'Nada por aquí.'}</div>`}
+    <p class="small" style="padding:18px 16px 40px">${cine ? 'Cartelera de España según TMDB. Se actualiza cada 12 horas.' : 'Datos de disponibilidad: JustWatch (vía TMDB). Se actualizan cada 3 días.'}</p>`;
 }
 function openProv(name){ S.prov = name; S.provType = ''; setTab('prov'); }
 function recentReleases(type){
@@ -1543,6 +1543,30 @@ function openFix(it){
   setTimeout(() => { $('#fxQ').focus(); $('#fxQ').select(); }, 60);
   if (!it.matched) go();
 }
+// Vídeos sin identificar: identificarlos uno a uno o quitarlos de la biblioteca (el archivo no se borra)
+function openOthers(){
+  const list = (S.allOthers || []).slice(0, 300);
+  openMenu(`<div class="hd">Vídeos sin identificar · ${S.allOthers.length}<br><span style="font-size:12px;font-weight:400">«Identificar» le pone su carátula buscándolo por el título. «Quitar» lo oculta de Mi Cine (el archivo no se toca).</span></div>
+    <div style="padding:6px 16px 4px;display:flex;gap:8px;flex-wrap:wrap"><button class="mini danger" id="oAll">Quitar todos (${S.allOthers.length})</button></div>
+    <div id="oList" style="padding:0 16px 16px">${list.map((it, i) => `<div class="urow" data-oi="${i}"><div class="nm">${esc(it.title)}<small>${esc(it.files?.[0]?.n || '')}</small></div>
+      <button class="mini" data-ofix="${i}">Identificar</button><button class="mini danger" data-ohide="${i}">Quitar</button></div>`).join('')}
+      ${S.allOthers.length > list.length ? `<p class="small">Se muestran los ${list.length} más recientes.</p>` : ''}</div>`);
+  $('#oList').onclick = async e => {
+    const f = e.target.closest('[data-ofix]'); if (f) return openFix(list[+f.dataset.ofix]);
+    const h = e.target.closest('[data-ohide]'); if (!h) return;
+    const it = list[+h.dataset.ohide];
+    h.disabled = true;
+    try { await api('admin/hide', { method: 'POST', body: { k0s: it.k0 } }); h.closest('.urow').remove(); S.libVersion = 0; srvLoadLibrary(true); }
+    catch (err) { toast(err.message); h.disabled = false; }
+  };
+  $('#oAll').onclick = async () => {
+    const b = $('#oAll');
+    if (!b.dataset.sure) { b.dataset.sure = 1; b.textContent = '¿Seguro? Toca otra vez para quitarlos todos'; return; }
+    b.disabled = true; b.textContent = 'Quitando…';
+    try { await api('admin/hide', { method: 'POST', body: { k0s: S.allOthers.flatMap(it => it.k0) } }); closeMenu(); toast('Vídeos sin identificar quitados'); S.libVersion = 0; srvLoadLibrary(true); }
+    catch (err) { toast(err.message); b.disabled = false; }
+  };
+}
 async function hideItem(it, btn){
   if (!btn.dataset.sure) { btn.dataset.sure = 1; btn.lastChild.textContent = '¿Seguro? Toca otra vez'; return; }
   try { await api('admin/hide', { method: 'POST', body: { k0s: it.k0 } }); closeDetail(); toast('Ocultado de la biblioteca'); S.libVersion = 0; srvLoadLibrary(true); }
@@ -1568,6 +1592,7 @@ function render(){
   else if (S.tab === 'tv' || S.tab === 'movie') v.innerHTML = typeHtml(S.tab);
   else if (S.tab === 'mylist') v.innerHTML = listHtml();
   else if (S.tab === 'prov') v.innerHTML = provHtml();
+  else if (S.tab === 'cine') { S.prov = CINE; v.innerHTML = provHtml(); }
   else if (S.tab === 'live') { v.innerHTML = liveHtml(); return; }
   else if (S.tab === 'requests') { v.innerHTML = requestsHtml(); bindRequests(); return; }
   else if (S.tab === 'search') {
@@ -1591,7 +1616,6 @@ function homeHtml(){
   h += row('Mi lista', myList());
   h += provStrip();
   h += row('Estrenos recientes', recentReleases());
-  h += cinemaRow();
   const mw = mostWatched();
   if (mw.length >= 3) h += row('Top 10: lo más visto en casa', mw, { top10: true });
   h += row('Añadido recientemente', recentlyAdded());
@@ -1601,7 +1625,6 @@ function homeHtml(){
   h += provRows(null, 4);
   const sg = sagas();
   genreRows(null).forEach((g, i) => { h += row(g.name, g.items); if (sg[i]) h += row(sagaTitle(sg[i].name), sg[i].items); if (i === 1) h += row('Series para maratonear', S.items.filter(it => it.type === 'tv' && it.eps?.length >= 8).sort((a, b) => b.pop - a.pop).slice(0, 20)); });
-  if (S.others.length) h += row('Otros vídeos', S.others.slice(0, 40));
   return h;
 }
 function typeHtml(type){
@@ -2304,6 +2327,9 @@ async function renderAdmin(){
     <div class="boxes"><div class="bx"><b>${st.items}</b><span>títulos</span></div><div class="bx"><b>${st.files}</b><span>vídeos encontrados</span></div><div class="bx"><b style="font-size:14px;padding-top:6px">${esc(last)}</b><span>último escaneo</span></div></div>
     ${st.scanning ? `<p class="small" style="margin-top:12px">⏳ ${esc(st.phase)}${st.total ? ` · ${st.done}/${st.total}` : ''}</p>${st.total ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}` : `<button class="mini" id="admScan" style="margin-top:12px">${ICON.refresh.replace('class="i"', 'class="i" style="width:16px;height:16px;vertical-align:-3px"')} Escanear ahora</button>`}
     ${st.error ? `<p class="err">Último error: ${esc(st.error)}</p>` : ''}
+    <p class="small" style="margin-top:10px">📺 Plataformas: ${st.prov?.total ? `comprobando dónde está cada título… ${st.prov.done}/${st.prov.total}` : st.nprov ? `${st.nprov} detectadas (Netflix, HBO Max…). Se revisan cada 3 días.` : 'pendiente de la primera comprobación (empieza unos segundos después de arrancar).'}</p>
+    ${st.prov?.total ? `<div class="bar"><i style="width:${Math.round(st.prov.done / st.prov.total * 100)}%"></i></div>` : ''}
+    ${S.allOthers?.length ? `<div class="urow" style="margin-top:10px"><div class="nm">Vídeos sin identificar<small>${S.allOthers.length} archivos sin carátula (no salen en Inicio)</small></div><button class="mini" id="admOthers">Revisar</button></div>` : ''}
     <h3>Carpetas</h3>
     ${st.media.map(m => `<div class="urow"><div class="nm">${esc(m.name)}<small>${esc(m.path)}</small></div><span class="small">${m.ok ? '✅ accesible' : '⚠️ no encontrada'}</span></div>`).join('')}
     ${rq ? `<h3>Peticiones</h3><div class="urow"><div class="nm">${rq.pending} pendiente${rq.pending === 1 ? '' : 's'}<small>${rq.requests.length} en total</small></div><button class="mini" id="admReq">Ver peticiones</button></div>` : ''}
@@ -2334,7 +2360,8 @@ async function renderAdmin(){
     <button class="btn red" id="nuAdd">${ICON.plus}Añadir usuario</button>`;
   clearTimeout(admTimer);
   paintNow();
-  if (st.scanning) admTimer = setTimeout(() => S.detail?.admin && renderAdmin(), 2500);
+  if ($('#admOthers')) $('#admOthers').onclick = openOthers;
+  if (st.scanning || st.prov?.total) admTimer = setTimeout(() => S.detail?.admin && renderAdmin(), 2500);
   else if (S.admWasScanning) srvLoadLibrary(true);
   S.admWasScanning = st.scanning;
   $('#admScan') && ($('#admScan').onclick = async () => { await api('admin/scan', { method: 'POST', body: {} }); setTimeout(renderAdmin, 800); });

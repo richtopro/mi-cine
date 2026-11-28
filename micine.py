@@ -603,7 +603,7 @@ def build_library():
     raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
     with LIB_LOCK:
         LIB.update(version=data['version'], json=raw, gz=gzip.compress(raw, 6), paths=paths, info=info,
-                   keys=[i['key'] for i in out_items], det_keys=set(det))
+                   keys=[i['key'] for i in out_items], det_keys=set(det), nprov=len(providers))
     return groups, meta
 
 
@@ -641,25 +641,41 @@ def full_scan():
                         if i % 300 == 0:
                             build_library()
                 build_library()
-            # plataformas (Netflix, HBO Max…): se comprueban cada 3 días porque los catálogos cambian
-            prov = load_providers()
-            with LIB_LOCK:
-                keys = list(LIB.get('keys', []))
-            need = [k for k in keys if k not in prov or time.time() - prov[k].get('at', 0) > PROV_EVERY]
-            if need:
-                STATUS.update(phase='Plataformas', done=0, total=len(need))
-                with concurrent.futures.ThreadPoolExecutor(6) as ex:
-                    for i, _ in enumerate(ex.map(fetch_providers, need), 1):
-                        STATUS['done'] = i
-                        if i % 500 == 0:
-                            build_library()
-                build_library()
         STATUS['last_scan'] = int(time.time())
     except Exception as e:
         STATUS['error'] = str(e)
         traceback.print_exc()
     finally:
         STATUS.update(scanning=False, phase='')
+
+
+PSTAT = {'done': 0, 'total': 0, 'at': 0}
+
+
+def providers_loop():
+    """Plataformas (Netflix, HBO Max…) en segundo plano, sin esperar al escaneo de carpetas.
+    Cada título se vuelve a comprobar cada 3 días porque los catálogos cambian."""
+    time.sleep(20)
+    while True:
+        try:
+            if CFG.get('tmdb_key'):
+                with LIB_LOCK:
+                    keys = list(LIB.get('keys', []))
+                prov = load_providers()
+                need = [k for k in keys if k not in prov or time.time() - prov[k].get('at', 0) > PROV_EVERY]
+                if need:
+                    PSTAT.update(done=0, total=len(need))
+                    with concurrent.futures.ThreadPoolExecutor(4) as ex:
+                        for i, _ in enumerate(ex.map(fetch_providers, need), 1):
+                            PSTAT['done'] = i
+                            if i % 400 == 0:
+                                build_library()
+                    build_library()
+                    log('Plataformas: %d títulos comprobados' % len(need))
+                PSTAT.update(total=0, at=int(time.time()))
+        except Exception as e:
+            log('Plataformas', e)
+        time.sleep(3600)
 
 
 # ------------------------------------------------------------------ TV en directo (listas M3U + guía XMLTV)
@@ -1469,7 +1485,7 @@ class Handler(BaseHTTPRequestHandler):
         if ep == 'admin/status' and u['admin']:
             with LIB_LOCK:
                 n_items = LIB['json'].count(b'"key":')
-            return self.send(200, dict(STATUS, items=n_items, ffmpeg=bool(tool('ffmpeg') and tool('ffprobe')), media=[{'name': m['name'], 'path': m['path'], 'ok': os.path.isdir(m['path'])} for m in CFG['media']]))
+            return self.send(200, dict(STATUS, items=n_items, prov=PSTAT, nprov=LIB.get('nprov', 0), ffmpeg=bool(tool('ffmpeg') and tool('ffprobe')), media=[{'name': m['name'], 'path': m['path'], 'ok': os.path.isdir(m['path'])} for m in CFG['media']]))
         self.err(404 if not ep.startswith('admin') else 403, 'no disponible')
 
     def _api_write(self, method):
@@ -1604,7 +1620,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'ok': True})
         if ep in ('admin/fix', 'admin/hide') and method == 'POST':
             b = self.body()
-            k0s = [str(k) for k in (b.get('k0s') or []) if isinstance(k, str)][:50]
+            k0s = [str(k) for k in (b.get('k0s') or []) if isinstance(k, str)][:20000 if ep == 'admin/hide' else 50]
             if not k0s:
                 return self.err(400, 'Falta el título')
             if ep == 'admin/hide':
@@ -1892,6 +1908,7 @@ def main():
     if cmd == 'serve':
         threading.Thread(target=scanner_loop, daemon=True).start()
         threading.Thread(target=live_loop, daemon=True).start()
+        threading.Thread(target=providers_loop, daemon=True).start()
         srv = ThreadingHTTPServer((CFG['host'], int(CFG['port'])), Handler)
         srv.daemon_threads = True
         log('Mi Cine escuchando en http://%s:%s%s/' % (CFG['host'], CFG['port'], CFG['base_url']))
