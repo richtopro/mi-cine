@@ -121,6 +121,11 @@ html.srv .nosrv{display:none!important}
 .avgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:8px 0}
 .avgrid button{aspect-ratio:1;border:2px solid transparent;border-radius:8px;font-size:26px;background:#333;display:grid;place-items:center;padding:0}
 .avgrid button.on{border-color:#fff}
+.avsvg{width:100%;height:100%;display:block}
+.avgrid.chars{grid-template-columns:repeat(auto-fill,minmax(64px,1fr))}
+.avgrid.chars button{overflow:hidden;background:none}
+.avgrid.chars button:hover{transform:scale(1.06)}
+.tv .avgrid button:focus{outline:3px solid #fff;transform:scale(1.08)}
 .swatches{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px}
 .swatches button{width:28px;height:28px;border-radius:50%;border:2px solid transparent}
 .swatches button.on{border-color:#fff}
@@ -136,6 +141,120 @@ html.srv .nosrv{display:none!important}
 .ch .cn{padding:8px 10px 0;font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ch .np{padding:2px 10px 10px;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.4em}
 .ch .prog{position:static;height:3px}
+/* TV en directo: lista con vista previa y guía */
+.lvtop{display:flex;align-items:flex-end;gap:6px 18px;flex-wrap:wrap}
+.lvtabs{display:flex;gap:4px;padding:0 12px 6px}
+.lvtabs button{background:none;border:0;color:#999;font-weight:700;font-size:15px;padding:8px 10px;border-bottom:3px solid transparent}
+.lvtabs button.on{color:#fff;border-color:var(--red)}
+.lgt{font-size:11px;line-height:1.15;font-weight:800;text-align:center;padding:0 4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;color:#ddd;text-transform:uppercase}
+.pvlogo .lgt{font-size:clamp(20px,4vw,44px);color:#666}
+.livebar{padding-bottom:12px!important}
+.livebar #pBack{width:48px;height:48px}
+#player:has(.livebar) video{height:calc(100% - 68px);margin-top:68px}
+.badge-live{display:inline-block;background:var(--red);color:#fff;font-weight:800;font-size:11px;padding:3px 7px;border-radius:3px;letter-spacing:.5px;margin-right:8px;line-height:1.2}
+.lv{display:grid;grid-template-columns:minmax(300px,390px) 1fr;grid-template-areas:"side prev";gap:22px;padding:8px 16px 30px;align-items:start}
+.lvside{grid-area:side;min-width:0}
+.lvprev{grid-area:prev;position:sticky;top:calc(env(safe-area-inset-top) + 72px);min-width:0}
+.lvsearch{display:flex;align-items:center;gap:8px;background:#222;border-radius:24px;padding:0 14px;margin-bottom:6px;color:#999}
+.lvsearch input{flex:1;min-width:0;background:none;border:0;color:#fff;padding:11px 0;font-size:15px;outline:none}
+.lvchips{padding:4px 0 10px!important}
+.gtop~.lvchips{padding:2px 16px 10px!important}
+.lvlist{display:flex;flex-direction:column;gap:6px}
+.lvrow{display:flex;align-items:center;gap:12px;background:#181818;border-radius:8px;padding:8px;cursor:pointer;border:2px solid transparent;outline:none}
+.lvrow:hover{background:#202020}
+.lvrow.on{background:linear-gradient(90deg,#3d0b0e,#1b1b1b 75%);border-color:#e5091466}
+.lvrow .lg,.gdl .lg{width:84px;height:48px;flex:none;background:#000;border:1px solid #333;border-radius:6px;display:grid;place-items:center;font-weight:800;color:#aaa;overflow:hidden;font-size:15px}
+.lvrow .lg img,.gdl .lg img,.gch .lg img,.pvlogo img{max-width:80%;max-height:80%;object-fit:contain}
+.lvrow .inf{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.lvrow .inf b{font-size:14px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lvrow .np{font-size:13px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lvrow.on .np{color:#ff5a5f}
+.lvrow .prog,.pvov .prog,.gdr .prog{position:static;height:3px;background:#444;border-radius:2px;max-width:230px;margin-top:3px}
+.lvrow .fav{background:none;border:0;color:#777;font-size:22px;padding:4px 6px;line-height:1}
+.fav.on,.pvbtns .btn.on{color:#f5c518!important}
+.lvrow .pl{background:none;border:0;color:var(--red);padding:4px;display:none}
+.lvrow .pl .i{width:26px;height:26px}
+.lvrow.on .pl{display:block}
+.pvbox{position:relative;aspect-ratio:16/9;background:radial-gradient(circle at 50% 42%,#2b2b2b,#090909 75%);border-radius:10px;overflow:hidden}
+.pvbox video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .5s;background:#000}
+.pvbox.playing video{opacity:1}
+.pvlogo{position:absolute;inset:0;display:grid;place-items:center;font-size:44px;font-weight:800;color:#777}
+.pvlogo img{max-width:32%;max-height:42%}
+.pvmsg{position:absolute;left:0;right:0;bottom:14px;text-align:center;color:#999;font-size:13px}
+.pvmsg .spin{margin:auto;width:22px;height:22px}
+.pvov{padding:14px 2px 0}
+.pvtag{display:flex;align-items:center;font-size:12px;color:#aaa;text-transform:uppercase;letter-spacing:.6px}
+.pvov h2{font-size:30px;margin:8px 0 4px;font-weight:800}
+.pvnow{display:flex;gap:10px;align-items:baseline;font-size:17px;flex-wrap:wrap}
+.pvnow small{color:#aaa;font-size:13px}
+.pvov .prog{height:4px;max-width:420px;margin:8px 0 2px}
+.pvbtns{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 4px}
+.pvup h3{font-size:12px;color:#999;text-transform:uppercase;letter-spacing:.6px;margin:14px 0 4px}
+.pvup div{display:flex;gap:14px;padding:7px 0;border-top:1px solid #232323;font-size:14px}
+.pvup b{color:#999;font-weight:600;min-width:44px}
+.tv .lvrow:focus{border-color:#fff;background:#2a2a2a}
+.gtop{display:grid;grid-template-columns:auto 1fr;gap:14px;padding:6px 16px 8px;align-items:stretch}
+.gdays{display:flex;gap:8px;align-items:stretch}
+.gday{background:#1f1f1f;border:2px solid transparent;border-radius:10px;color:#ddd;min-width:66px;padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.gday small{font-size:11px;color:#999;font-weight:700}
+.gday b{font-size:22px}
+.gday.on{border-color:var(--red)}
+.gday.on small,.gday.on b{color:var(--red)}
+.gday.gnowb b{font-size:15px}
+.gdet{background:#1a1a1a;border-radius:10px;padding:12px 16px;display:flex;gap:14px;align-items:center;min-height:86px;min-width:0}
+.ghint{color:#888;font-size:14px}
+.gdr{flex:1;min-width:0}
+.gdm{font-size:12px;color:#aaa;display:flex;align-items:center;flex-wrap:wrap}
+.gdr h3{margin:4px 0 2px;font-size:19px}
+.gdr p{margin:5px 0 0;font-size:13px;color:#bbb;line-height:1.45;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.gdet .btn{flex:none}
+.gwrap{padding:0 0 0 16px}
+.gscroll{overflow:auto;position:relative;border-top:1px solid #262626;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.ginner{position:relative}
+.ghead{position:sticky;top:0;z-index:5;display:flex;height:34px;background:#141414;border-bottom:1px solid #2a2a2a}
+.gcorner{position:sticky;left:0;z-index:6;width:var(--chw);flex:none;background:#141414;color:#777;display:grid;place-items:center}
+.gticks{position:relative;height:100%}
+.gticks span{position:absolute;top:9px;font-size:12px;color:#aaa;padding-left:6px;border-left:1px solid #333;height:25px}
+.gnowlbl{position:absolute;top:6px;transform:translateX(-50%);background:var(--red);color:#fff;font-size:11px;font-weight:800;font-style:normal;padding:2px 6px;border-radius:4px;z-index:2}
+.grow{display:flex;height:66px;border-bottom:1px solid #1d1d1d}
+.gch{position:sticky;left:0;z-index:3;width:var(--chw);flex:none;background:#141414;border:0;border-right:1px solid #2a2a2a;color:#fff;display:flex;align-items:center;gap:10px;padding:0 10px;text-align:left;cursor:pointer}
+.gch:hover{background:#1e1e1e}
+.gch .lg{width:48px;height:36px;flex:none;display:grid;place-items:center;background:#000;border-radius:5px;overflow:hidden;font-weight:800;font-size:12px;color:#999}
+.gch .nm{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.gtrack{position:relative;flex:1}
+.gp{position:absolute;top:5px;bottom:5px;background:#252525;border:1px solid #333;border-radius:7px;color:#fff;text-align:left;padding:0;overflow:hidden;overflow:clip;cursor:pointer}
+.gp span{position:sticky;left:calc(var(--chw) + 6px);display:inline-flex;flex-direction:column;max-width:100%;box-sizing:border-box;padding:8px 10px;gap:4px}
+.gp b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gp small{font-size:11px;color:#999;white-space:nowrap}
+.gp.past{opacity:.45}
+.gp.cur{background:#2c2c2c;border-color:var(--red)}
+.gp:hover{background:#333}
+.gp.sel{background:#3a3a3a;outline:2px solid #fff;outline-offset:-2px}
+.gp.none{background:#1a1a1a;border-style:dashed;color:#888}
+.tv .gp:focus,.tv .gch:focus{outline:3px solid #fff;outline-offset:-3px;background:#3a3a3a}
+.gnowline{position:absolute;top:34px;bottom:0;width:2px;background:var(--red);z-index:2;pointer-events:none}
+@media (max-width:899px){
+  .lv{grid-template-columns:1fr;grid-template-areas:"prev" "side";padding:2px 12px 96px;gap:8px}
+  .lvprev{position:sticky;top:calc(env(safe-area-inset-top) + 54px);z-index:6;background:var(--bg);padding-bottom:6px}
+  .pvbox{max-height:30vh;aspect-ratio:auto;height:min(30vh,calc((100vw - 24px) * .5625))}
+  .pvov{padding-top:8px}
+  .pvtag,.pvup,#pvToggle,.pvov .prog{display:none}
+  .pvov h2{font-size:19px;margin:0 0 2px}
+  .pvnow{font-size:14px}
+  .pvbtns{margin:8px 0 0}
+  .pvbtns .btn{padding:7px 14px;font-size:14px}
+  .lvrow .lg{width:64px;height:40px}
+  .gtop{grid-template-columns:1fr;padding:4px 12px 6px}
+  .gday{min-width:56px;padding:6px 8px}
+  .gday b{font-size:18px}
+  .gwrap{padding:0}
+  .grow{height:60px}
+  .gch{flex-direction:column;justify-content:center;gap:3px;padding:0 4px}
+  .gch .lg{width:44px;height:28px}
+  .gch .nm{font-size:10px;text-align:center;-webkit-line-clamp:1;max-width:100%}
+  .gdet{min-height:0;padding:10px 12px;flex-wrap:wrap}
+  .gdl{display:none}
+}
 .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--red);margin-right:6px;animation:blink 1.6s infinite}
 @keyframes blink{50%{opacity:.3}}
 .rqrow{display:flex;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid #222}
@@ -223,6 +342,15 @@ select{background:#2a2a2a;color:#fff;border:1px solid #555;border-radius:4px;pad
 .adm{padding:calc(env(safe-area-inset-top) + 56px) 16px 30px}
 .adm h1{margin:0 0 4px;font-size:24px}
 .adm h3{margin:22px 0 8px;font-size:16px;color:#ddd}
+.nowc{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:#222;border-radius:10px;padding:10px;margin-bottom:8px}
+.nowc .nimg{width:58px;height:84px;flex:none;border-radius:6px;background:#333 center/cover no-repeat;display:grid;place-items:center;font-size:22px}
+.nowc .nimg.lg{width:84px;height:56px;background-size:contain;background-color:#000;background-origin:content-box;padding:6px;box-sizing:border-box}
+.nowc .ninf{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.nowc .ninf b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nowc .nmeta{font-size:12px;color:#aaa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nowc .prog{position:static;height:3px;background:#444;border-radius:2px;margin-top:4px}
+.nowc .st{font-size:11px;color:#46d369;font-weight:700}
+.nowc .st.pz{color:#f5c518}
 .adm .boxes{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 .adm .bx{background:#222;border-radius:8px;padding:12px}
 .adm .bx b{display:block;font-size:22px}
@@ -542,9 +670,71 @@ function addProfile(name){
   const p = { id: 'p' + Date.now().toString(36), name, color: COLORS[S.stats.profiles.length % COLORS.length] };
   S.stats.profiles.push(p); saveStats(); return p;
 }
+/* Avatares ilustrados (personajes propios, dibujados en SVG) */
+const AVS = [
+  ['blob', '#ff8a65', '#d84315', '#ffe082', 2], ['robot', '#4fc3f7', '#01579b', '#cfd8dc', 0], ['cat', '#ba68c8', '#4a148c', '#ffb74d', 0], ['bear', '#81c784', '#1b5e20', '#a1887f', 0],
+  ['ghost', '#7986cb', '#1a237e', '#ffffff', 0], ['alien', '#26a69a', '#004d40', '#aed581', 0], ['owl', '#ffb74d', '#bf360c', '#8d6e63', 0], ['fox', '#4dd0e1', '#006064', '#ff7043', 0],
+  ['blob', '#f06292', '#880e4f', '#80deea', 1], ['robot', '#ffd54f', '#e65100', '#ef5350', 1], ['cat', '#90a4ae', '#263238', '#eeeeee', 1], ['bear', '#f48fb1', '#ad1457', '#fff3e0', 1],
+  ['ghost', '#ef5350', '#7f0000', '#fff59d', 1], ['alien', '#9575cd', '#311b92', '#f48fb1', 1], ['owl', '#4db6ac', '#00352c', '#cfd8dc', 1], ['fox', '#aed581', '#33691e', '#ffa726', 1],
+  ['blob', '#64b5f6', '#0d47a1', '#c5e1a5', 3], ['robot', '#e57373', '#4a0d0d', '#90caf9', 2], ['cat', '#ffcc80', '#e65100', '#5d4037', 2], ['bear', '#4fc3f7', '#0d47a1', '#212121', 2],
+  ['ghost', '#66bb6a', '#0b3d0f', '#e1bee7', 2], ['alien', '#ff8a65', '#5d1a00', '#b2ebf2', 2], ['owl', '#ce93d8', '#38006b', '#ffcc80', 2], ['fox', '#f06292', '#560027', '#fff176', 2]
+];
+function avSvg(i){
+  const [ty, b1, b2, c, v] = AVS[i] || AVS[0], id = 'avg' + i;
+  const eye = (x, y, r = 8.5, look = 1.5) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff"/><circle cx="${x + look}" cy="${y + 1}" r="${r * .52}" fill="#1b1b1b"/><circle cx="${x + look + r * .22}" cy="${y - r * .12}" r="${r * .17}" fill="#fff"/>`;
+  const smile = (y, w = 12, open = v % 2) => open ? `<path d="M${50 - w} ${y} Q50 ${y + w * 1.25} ${50 + w} ${y} Z" fill="#3b0d0d"/><path d="M${50 - w * .55} ${y + w * .55} Q50 ${y + w * .95} ${50 + w * .55} ${y + w * .55}" fill="#ff8a80"/>` : `<path d="M${50 - w} ${y} Q50 ${y + w} ${50 + w} ${y}" stroke="#1b1b1b" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
+  const blush = y => `<ellipse cx="29" cy="${y}" rx="5" ry="3" fill="#ff5c8a" opacity=".45"/><ellipse cx="71" cy="${y}" rx="5" ry="3" fill="#ff5c8a" opacity=".45"/>`;
+  let g = '';
+  if (ty === 'blob') {
+    g = `<path d="M12 104C10 56 28 30 50 30s40 26 38 74z" fill="${c}"/>`;
+    if (v === 1 || v === 3) g += `<path d="M30 38 L24 18 L40 32Z M70 38 L76 18 L60 32Z" fill="${b2}"/>`;
+    else g += `<path d="M50 30 V16" stroke="${b2}" stroke-width="3"/><circle cx="50" cy="14" r="5" fill="${b2}"/>`;
+    g += v === 3 ? eye(50, 56, 13, 2) : v === 2 ? eye(36, 56) + eye(50, 49, 7) + eye(64, 56) : eye(38, 56) + eye(62, 56);
+    g += smile(72) + blush(68);
+  } else if (ty === 'robot') {
+    g = `<rect x="40" y="80" width="20" height="24" fill="#78909c"/><path d="M50 30 V18" stroke="#546e7a" stroke-width="3"/><circle cx="50" cy="15" r="5" fill="${v === 1 ? '#ff1744' : '#ffea00'}"/>
+      <rect x="20" y="30" width="60" height="52" rx="12" fill="${c}"/><rect x="14" y="46" width="8" height="18" rx="3" fill="#90a4ae"/><rect x="78" y="46" width="8" height="18" rx="3" fill="#90a4ae"/>
+      <rect x="28" y="40" width="44" height="22" rx="8" fill="#263238"/>`;
+    g += v === 2 ? `<rect x="34" y="48" width="12" height="6" rx="3" fill="#00e5ff"/><rect x="54" y="48" width="12" height="6" rx="3" fill="#00e5ff"/>` : `<circle cx="40" cy="51" r="6" fill="#00e5ff"/><circle cx="60" cy="51" r="6" fill="#00e5ff"/><circle cx="42" cy="49" r="2" fill="#fff"/><circle cx="62" cy="49" r="2" fill="#fff"/>`;
+    g += `<rect x="36" y="68" width="28" height="7" rx="3" fill="#37474f"/><path d="M43 68v7M50 68v7M57 68v7" stroke="${c}" stroke-width="1.6"/>`;
+  } else if (ty === 'cat') {
+    g = `<path d="M22 50 L20 18 L44 36Z M78 50 L80 18 L56 36Z" fill="${c}"/><path d="M25 42 L24 26 L37 36Z M75 42 L76 26 L63 36Z" fill="#ff8fb1"/>
+      <ellipse cx="50" cy="64" rx="34" ry="30" fill="${c}"/>`;
+    if (v !== 1) g += `<path d="M50 34 v10 M42 36 l2 8 M58 36 l-2 8" stroke="${b2}" stroke-width="3" stroke-linecap="round" opacity=".55"/>`;
+    g += eye(37, 60, 8) + eye(63, 60, 8) + `<path d="M46 70 h8 l-4 4z" fill="#ff6f91"/><path d="M50 74 q-4 6 -9 3 M50 74 q4 6 9 3" stroke="#1b1b1b" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      <path d="M22 70 h14 M22 76 l14 -3 M78 70 h-14 M78 76 l-14 -3" stroke="#1b1b1b" stroke-width="1.4" opacity=".6"/>`;
+  } else if (ty === 'bear') {
+    g = `<circle cx="24" cy="36" r="13" fill="${c}"/><circle cx="76" cy="36" r="13" fill="${c}"/><circle cx="24" cy="36" r="6" fill="#00000033"/><circle cx="76" cy="36" r="6" fill="#00000033"/>
+      <circle cx="50" cy="62" r="34" fill="${c}"/><ellipse cx="50" cy="74" rx="16" ry="12" fill="#ffffff55"/>`;
+    g += (v === 2 ? `<ellipse cx="36" cy="56" rx="10" ry="9" fill="#fff"/><ellipse cx="64" cy="56" rx="10" ry="9" fill="#fff"/><circle cx="37" cy="57" r="4.5" fill="#111"/><circle cx="63" cy="57" r="4.5" fill="#111"/>` : eye(37, 56, 7) + eye(63, 56, 7));
+    g += `<ellipse cx="50" cy="69" rx="6" ry="4.5" fill="#1b1b1b"/>` + smile(76, 7, 0) + blush(68);
+  } else if (ty === 'ghost') {
+    g = `<path d="M18 104 V56 C18 34 32 22 50 22 S82 34 82 56 V104 l-8 -6 -8 6 -8 -6 -8 6 -8 -6 -8 6 -8 -6 -8 6Z" fill="${c}"/>
+      <ellipse cx="38" cy="54" rx="7" ry="10" fill="#1b1b1b"/><ellipse cx="62" cy="54" rx="7" ry="10" fill="#1b1b1b"/><circle cx="40" cy="50" r="2.5" fill="#fff"/><circle cx="64" cy="50" r="2.5" fill="#fff"/>`;
+    g += (v === 1 ? `<ellipse cx="50" cy="76" rx="7" ry="9" fill="#1b1b1b"/>` : smile(72, 10, v === 2 ? 1 : 0)) + blush(66);
+  } else if (ty === 'alien') {
+    g = `<path d="M38 26 L30 10 M62 26 L70 10" stroke="${c}" stroke-width="3"/><circle cx="30" cy="9" r="4.5" fill="${b1}" stroke="${c}" stroke-width="2"/><circle cx="70" cy="9" r="4.5" fill="${b1}" stroke="${c}" stroke-width="2"/>
+      <path d="M50 22 C76 22 86 44 82 62 C78 82 62 96 50 96 C38 96 22 82 18 62 C14 44 24 22 50 22Z" fill="${c}"/>
+      <ellipse cx="36" cy="58" rx="11" ry="7" transform="rotate(25 36 58)" fill="#111"/><ellipse cx="64" cy="58" rx="11" ry="7" transform="rotate(-25 64 58)" fill="#111"/>
+      <circle cx="33" cy="55" r="2.5" fill="#fff"/><circle cx="61" cy="55" r="2.5" fill="#fff"/>`;
+    g += v === 1 ? `<circle cx="50" cy="80" r="4" fill="#1b1b1b"/>` : smile(78, 7, v === 2 ? 1 : 0);
+  } else if (ty === 'owl') {
+    g = `<path d="M20 40 L26 16 L40 32Z M80 40 L74 16 L60 32Z" fill="${c}"/><ellipse cx="50" cy="66" rx="34" ry="36" fill="${c}"/><ellipse cx="50" cy="82" rx="20" ry="18" fill="#ffffff44"/>
+      <circle cx="35" cy="52" r="14" fill="#fff7e0"/><circle cx="65" cy="52" r="14" fill="#fff7e0"/>`;
+    g += eye(35, 52, 9, 1) + eye(65, 52, 9, -1) + `<path d="M44 64 L56 64 L50 74Z" fill="#ffb300"/>`;
+    if (v === 2) g += `<path d="M38 84 q4 4 8 0 M54 84 q4 4 8 0" stroke="#00000044" stroke-width="2" fill="none"/>`;
+  } else {
+    g = `<path d="M18 50 L22 14 L44 38Z M82 50 L78 14 L56 38Z" fill="${c}"/><path d="M24 40 L25 24 L36 36Z M76 40 L75 24 L64 36Z" fill="#3e2723" opacity=".55"/>
+      <path d="M50 30 C74 30 86 46 84 62 C82 80 64 96 50 96 C36 96 18 80 16 62 C14 46 26 30 50 30Z" fill="${c}"/>
+      <path d="M16 62 C26 64 38 72 50 96 C62 72 74 64 84 62 C82 80 64 96 50 96 C36 96 18 80 16 62Z" fill="#fff"/>`;
+    g += eye(37, 58, 7) + eye(63, 58, 7) + `<ellipse cx="50" cy="76" rx="6" ry="4.5" fill="#1b1b1b"/>` + (v === 2 ? smile(83, 6, 1) : '');
+  }
+  return `<svg class="avsvg" viewBox="0 0 100 100" aria-hidden="true"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${b1}"/><stop offset="1" stop-color="${b2}"/></linearGradient></defs><rect width="100" height="100" fill="url(#${id})"/><g>${g}</g></svg>`;
+}
 const AVATARS = ['🦊','🐼','🐯','🦁','🐸','🐵','🐶','🐱','🐨','🐻','🦄','🐙','🐧','🦉','🐢','🦖','🐳','🦋','🚀','👾','🤖','👻','🎸','⚽','🏀','🎮','🍿','🎬','🌟','🌈','🍕','🧁','👑','🦸','🧙','🏎️'];
 function avatarInner(p){
   if (p?.img) return `<img src="${esc(p.img)}" alt="">`;
+  if (p?.av != null && p.av !== '' && AVS[p.av]) return avSvg(+p.av);
   if (p?.emoji) return `<span class="emo">${p.emoji}</span>`;
   return esc(p?.name?.[0]?.toUpperCase() || '?');
 }
@@ -561,8 +751,8 @@ function resizePhoto(file){
     r.readAsDataURL(file);
   });
 }
-function editProfile(p){
-  const sel = { emoji: p?.emoji || '', img: p?.img || '', color: p?.color || COLORS[S.stats.profiles.length % COLORS.length] };
+function editProfile(p, fromApp){
+  const sel = { av: p?.av ?? (p ? '' : Math.floor(Math.random() * AVS.length)), emoji: p?.emoji || '', img: p?.img || '', color: p?.color || COLORS[S.stats.profiles.length % COLORS.length] };
   openMenu(`
     <div class="hd">${p ? 'Editar perfil' : 'Nuevo perfil'}</div>
     <div style="padding:8px 20px 4px;max-height:70vh;overflow:auto">
@@ -570,7 +760,9 @@ function editProfile(p){
         <div class="av" id="pprev" style="width:72px;height:72px;border-radius:8px;display:grid;place-items:center;font-size:30px;font-weight:800;flex:none"></div>
         <input id="pname" maxlength="16" value="${esc(p?.name||'')}" placeholder="Nombre" style="flex:1;background:#333;border:1px solid #555;border-radius:6px;color:#fff;padding:12px;font-size:16px">
       </div>
-      <label class="small" style="display:block;margin:12px 0 4px">Elige tu avatar</label>
+      <label class="small" style="display:block;margin:12px 0 4px">Elige tu personaje</label>
+      <div class="avgrid chars">${AVS.map((_, i) => `<button type="button" data-avi="${i}" aria-label="Personaje ${i + 1}">${avSvg(i)}</button>`).join('')}</div>
+      <label class="small" style="display:block;margin:12px 0 4px">… o un emoji con color de fondo</label>
       <div class="avgrid">${AVATARS.map(a => `<button type="button" data-av="${a}">${a}</button>`).join('')}</div>
       <div class="swatches">${COLORS.concat(['#333', '#6b7280']).map(c => `<button type="button" data-col="${c}" style="background:${c}" aria-label="Color"></button>`).join('')}</div>
       <label class="mini" style="display:inline-block;cursor:pointer">📷 Subir una foto<input type="file" id="pphoto" accept="image/*" hidden></label>
@@ -588,22 +780,26 @@ function editProfile(p){
   const paint = () => {
     const pv = $('#pprev'); pv.style.background = sel.color;
     pv.innerHTML = avatarInner({ ...sel, name: $('#pname').value || '?' });
-    document.querySelectorAll('[data-av]').forEach(b => b.classList.toggle('on', b.dataset.av === sel.emoji && !sel.img));
+    document.querySelectorAll('[data-av]').forEach(b => b.classList.toggle('on', b.dataset.av === sel.emoji && !sel.img && sel.av === ''));
+    document.querySelectorAll('[data-avi]').forEach(b => b.classList.toggle('on', String(sel.av) === b.dataset.avi && !sel.img));
     document.querySelectorAll('[data-col]').forEach(b => b.classList.toggle('on', b.dataset.col === sel.color));
   };
   paint();
-  document.querySelectorAll('[data-av]').forEach(b => b.onclick = () => { sel.emoji = b.dataset.av; sel.img = ''; paint(); });
+  document.querySelectorAll('[data-av]').forEach(b => b.onclick = () => { sel.emoji = b.dataset.av; sel.img = ''; sel.av = ''; paint(); });
+  document.querySelectorAll('[data-avi]').forEach(b => b.onclick = () => { sel.av = +b.dataset.avi; sel.img = ''; sel.emoji = ''; paint(); });
   document.querySelectorAll('[data-col]').forEach(b => b.onclick = () => { sel.color = b.dataset.col; paint(); });
-  $('#pnone').onclick = () => { sel.emoji = ''; sel.img = ''; paint(); };
+  $('#pnone').onclick = () => { sel.emoji = ''; sel.img = ''; sel.av = ''; paint(); };
   $('#pname').oninput = paint;
-  $('#pphoto').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { sel.img = await resizePhoto(f); sel.emoji = ''; paint(); } catch { toast('No se pudo leer esa imagen'); } };
+  $('#pphoto').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { sel.img = await resizePhoto(f); sel.emoji = ''; sel.av = ''; paint(); } catch { toast('No se pudo leer esa imagen'); } };
   if (!TV) setTimeout(() => $('#pname')?.focus(), 50);
   $('#psave').onclick = () => {
     const name = $('#pname').value.trim(); if (!name) return;
     const age = $('#page').value ? +$('#page').value : null;
     const target = p || addProfile(name);
-    Object.assign(target, { name, maxAge: age, emoji: sel.emoji, img: sel.img, color: sel.color });
-    saveStats(); closeMenu(); showWho();
+    Object.assign(target, { name, maxAge: age, emoji: sel.emoji, img: sel.img, color: sel.color, av: sel.av });
+    saveStats(); closeMenu();
+    if (fromApp && S.profile === target) { $('#myAvatar').style.background = target.color; $('#myAvatar').innerHTML = avatarInner(target); toast('Perfil actualizado'); }
+    else showWho();
   };
   if ($('#pdel')) $('#pdel').onclick = () => {
     S.stats.profiles = S.stats.profiles.filter(x => x.id !== p.id);
@@ -1269,6 +1465,7 @@ async function hideItem(it, btn){
 }
 
 function setTab(tab){
+  stopPreview();
   S.tab = tab; S.genreFilter = null;
   for (const b of document.querySelectorAll('[data-tab]')) b.classList.toggle('on', b.dataset.tab === tab);
   render(); window.scrollTo(0, 0);
@@ -1444,7 +1641,7 @@ function renderDetail(keepScroll){
   if (sel) sel.onchange = async () => { S.detail.season = +sel.value; renderDetail(true); if (it.tmdbId && !S.demo) { await seasonInfo(it.tmdbId, S.detail.season); renderDetail(true); } };
 }
 function closeDetail(fromPop){
-  clearTimeout(admTimer);
+  clearTimeout(admTimer); clearTimeout(nowTimer);
   if (fromPop !== true && history.state?.mc === 'd') return history.back();
   $('#sheet').classList.add('hidden'); $('#sheet').innerHTML = ''; document.body.classList.remove('lock'); S.detail = null; }
 $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeDetail(); });
@@ -1596,6 +1793,18 @@ async function miniPlayer(){
     await v.requestPictureInPicture();
   } catch (e) { toast('Tu navegador no permite la ventana flotante con este vídeo.'); }
 }
+// Avisa al servidor de qué se está viendo (panel «Reproduciendo ahora») y obedece si el administrador lo detiene
+setInterval(async () => {
+  if (!S.server || !S.cur || $('#player').classList.contains('hidden')) return;
+  const v = $('#vid'); if (!v) return;
+  const live = !!S.cur.live;
+  const body = { ref: live ? S.cur.liveId : S.cur.file.id, live, paused: v.paused };
+  if (!live) { try { body.pos = S.cur.tc ? vpos(v) : v.currentTime; } catch { body.pos = v.currentTime; } body.dur = S.cur.tc?.dur || v.duration; }
+  try {
+    const r = await api('nowplaying', { method: 'POST', body });
+    if (r.stop && S.cur) { closePlayer(); setTimeout(() => { openMenu(`<div class="hd">⛔ Reproducción detenida</div><p style="padding:4px 20px 8px;line-height:1.45;color:#ddd">${esc(r.stop)}</p><button id="stopOk">${ICON.check} Entendido</button>`); $('#stopOk').onclick = closeMenu; if (TV) focusEl($('#stopOk')); }, 400); }
+  } catch {}
+}, 10e3);
 function closePlayer(fromPop){
   if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => {});
   if (fromPop !== true && history.state?.mc === 'p') return history.back();
@@ -1617,6 +1826,7 @@ $('#menu').addEventListener('click', e => { if (e.target.id === 'menu') closeMen
 $('#menuBtn').onclick = () => {
   openMenu(`<div class="hd">${esc(S.profile.name)} · ${S.items.length} títulos${S.others.length ? ` · ${S.others.length} otros vídeos` : ''}</div>
     <button data-m="who">${ICON.user} Cambiar de perfil</button>
+    ${S.profile ? `<button data-m="myicon">${ICON.user} Cambiar mi icono o foto</button>` : ''}
     ${S.demo ? `<button data-m="exitdemo">${ICON.out} Salir de la demo</button>` : S.server ? `
     ${S.user?.admin && !kidsMax() ? `<button data-m="admin">${ICON.gear} Panel de administración</button>` : ''}
     <button data-m="sync">${ICON.refresh} Actualizar biblioteca</button>
@@ -1635,6 +1845,7 @@ $('#menu').addEventListener('click', async e => {
   const b = e.target.closest('[data-m]'); if (!b) return;
   const m = b.dataset.m; closeMenu();
   if (m === 'who') { S.manage = false; showWho(); }
+  if (m === 'myicon') { setTimeout(() => editProfile(S.profile, true), 50); return; }
   if (m === 'admin') return openAdmin();
   if (m === 'mylist') return setTab('mylist');
   if (m === 'pass') return changePassword();
@@ -1656,8 +1867,28 @@ document.addEventListener('click', e => {
   const t = e.target;
   const tab = t.closest('[data-tab]'); if (tab) return setTab(tab.dataset.tab);
   const ml = t.closest('[data-mylist]'); if (ml) return toggleList(ml.dataset.mylist);
+  const fv = t.closest('[data-fav]'); if (fv) return toggleFav(fv.dataset.fav);
   const lv = t.closest('[data-live]'); if (lv) return playLive(lv.dataset.live);
-  const lg = t.closest('[data-lgroup]'); if (lg) { S.liveGroup = lg.dataset.lgroup || null; $('#liveBox').innerHTML = liveInner(); return; }
+  const ls = t.closest('[data-lsel]'); if (ls) return LV.sel === ls.dataset.lsel && $('#pvVid') ? playLive(ls.dataset.lsel) : selectChannel(ls.dataset.lsel);
+  const gp = t.closest('[data-gp]'); if (gp) return onGuideClick(gp);
+  const gd = t.closest('[data-gday]'); if (gd) {
+    epgDay = +gd.dataset.gday; LV.gsel = null; $('#liveBox').innerHTML = guideHtml();
+    loadEpg(epgDay).then(paintGuide).catch(e => { if ($('#gWrap')) $('#gWrap').innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
+    return;
+  }
+  const lw = t.closest('[data-lview]'); if (lw) {
+    LS.set('liveView', lw.dataset.lview);
+    for (const b of document.querySelectorAll('[data-lview]')) b.classList.toggle('on', b === lw);
+    if (liveData) paintLive();
+    if (lw.dataset.lview === 'guide' && liveData?.channels.length) loadEpg(epgDay).then(paintGuide).catch(() => {});
+    return;
+  }
+  const lg = t.closest('[data-lgroup]'); if (lg) {
+    LV.group = lg.dataset.lgroup || null;
+    for (const b of document.querySelectorAll('[data-lgroup]')) b.classList.toggle('on', b === lg);
+    if ($('#lvList')) $('#lvList').innerHTML = listInner(chList()); else paintGuide();
+    return;
+  }
   const pi = t.closest('[data-playitem]'); if (pi) { const it = S.byKey[pi.dataset.playitem]; return play(it.key, nextUp(it).file.id); }
   const pl = t.closest('[data-play]'); if (pl) return play(pl.dataset.k, pl.dataset.play);
   const gen = t.closest('[data-genre]'); if (gen) { S.genreFilter = +gen.dataset.genre || null; render(); return; }
@@ -1896,7 +2127,44 @@ function acctRow(a){
     <input type="text" class="au" placeholder="https://…/lista.m3u" value="${esc(a.m3u || '')}" style="flex-basis:100%;margin:6px 0 0;font-family:monospace;font-size:12px">
   </div>`;
 }
-let admTimer = null;
+let admTimer = null, nowTimer = null;
+async function paintNow(){
+  clearTimeout(nowTimer);
+  const box = $('#admNow'); if (!box) return;
+  let d; try { d = await api('admin/now'); } catch (e) { box.innerHTML = `<p class="small">${esc(e.message)}</p>`; return; }
+  if (!$('#admNow')) return;
+  const ss = d.sessions;
+  $('#nowCnt').textContent = ss.length ? `· ${ss.length}` : '';
+  const real = ss.filter(x => !x.preview);
+  box.innerHTML = !ss.length ? '<div class="urow"><div class="nm" style="color:#aaa">Nadie está viendo nada ahora mismo.</div></div>' : ss.map(x => {
+    const img = x.poster ? (x.poster.startsWith('/') ? IMG + 'w185' + x.poster : x.poster) : '';
+    const frac = x.pos != null && x.dur ? x.pos / x.dur : x.frac;
+    const mins = Math.round((Date.now() / 1000 - x.started) / 60);
+    return `<div class="nowc">
+      <div class="nimg ${x.kind === 'live' ? 'lg' : ''}" style="${img ? `background-image:url('${esc(img)}')` : ''}">${img ? '' : x.kind === 'live' ? '📺' : '🎬'}</div>
+      <div class="ninf">
+        <b>${esc(x.title)}${x.sub ? ` <span class="small" style="font-weight:400">· ${esc(x.sub)}</span>` : ''}</b>
+        <div class="nmeta">👤 <b style="font-size:12px;color:#fff">${esc(x.user)}</b> · ${esc(x.device)} · ${esc(x.ip)}</div>
+        <div class="nmeta">${esc(x.mode)}${x.mbps ? ` · ${x.mbps} Mbps` : ''}${x.account ? ` · ${esc(x.account)}` : ''} · hace ${mins} min</div>
+        ${x.kind === 'live' ? `<span class="st">${x.preview ? '👁 Mirando la lista de canales' : '● En directo'}</span>` : `${frac != null ? `<div class="prog"><i style="width:${Math.round(frac * 100)}%"></i></div>` : ''}<span class="st ${x.paused ? 'pz' : ''}">${x.paused ? '❚❚ En pausa' : '▶ Reproduciendo'}${x.pos != null && x.dur ? ` · ${fmtT(x.pos)} / ${fmtT(x.dur)}` : frac != null ? ` · ${Math.round(frac * 100)} %` : ''}</span>`}
+      </div>
+      <button class="mini danger" data-nstop="${x.id}" data-nuser="${esc(x.user)}">Detener</button></div>`;
+  }).join('') + (ss.length && real.length !== ss.length ? '<p class="small">«Mirando la lista» es la vista previa de los canales: se corta sola al salir.</p>' : '');
+  box.onclick = async e => {
+    const c = e.target.closest('[data-ncancel]'); if (c) return paintNow();
+    const ok = e.target.closest('[data-nok]');
+    if (ok) {
+      const msg = ok.parentNode.querySelector('input').value.trim();
+      try { await api('admin/now/' + ok.dataset.nok, { method: 'POST', body: { msg } }); toast('Reproducción detenida'); } catch (err) { toast(err.message); }
+      return paintNow();
+    }
+    const b = e.target.closest('[data-nstop]'); if (!b) return;
+    clearTimeout(nowTimer);
+    b.outerHTML = `<div style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap"><input type="text" maxlength="200" value="El administrador ha detenido la reproducción." style="flex:1;min-width:180px;margin:0" aria-label="Mensaje para ${b.dataset.nuser}"><button class="mini danger" data-nok="${b.dataset.nstop}">Detener</button><button class="mini" data-ncancel>Cancelar</button></div>`;
+    box.querySelector('.nowc input')?.focus();
+  };
+  nowTimer = setTimeout(() => S.detail?.admin && paintNow(), 4000);
+}
 async function openAdmin(){
   const sh = $('#sheet');
   if (sh.classList.contains('hidden')) pushH('d');
@@ -1915,6 +2183,7 @@ async function renderAdmin(){
   const last = st.last_scan ? new Date(st.last_scan * 1000).toLocaleString('es-ES') : 'nunca';
   const pct = st.total ? Math.round(st.done / st.total * 100) : 0;
   box.innerHTML = `<h1>Panel de administración</h1><p class="small">Usuarios y biblioteca del servidor.</p>
+    <h3>Reproduciendo ahora <span class="small" id="nowCnt"></span></h3><div id="admNow"><p class="small">Cargando…</p></div>
     <h3>Biblioteca</h3>
     <div class="boxes"><div class="bx"><b>${st.items}</b><span>títulos</span></div><div class="bx"><b>${st.files}</b><span>vídeos encontrados</span></div><div class="bx"><b style="font-size:14px;padding-top:6px">${esc(last)}</b><span>último escaneo</span></div></div>
     ${st.scanning ? `<p class="small" style="margin-top:12px">⏳ ${esc(st.phase)}${st.total ? ` · ${st.done}/${st.total}` : ''}</p>${st.total ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}` : `<button class="mini" id="admScan" style="margin-top:12px">${ICON.refresh.replace('class="i"', 'class="i" style="width:16px;height:16px;vertical-align:-3px"')} Escanear ahora</button>`}
@@ -1946,6 +2215,7 @@ async function renderAdmin(){
     <div class="err" id="nuErr"></div>
     <button class="btn red" id="nuAdd">${ICON.plus}Añadir usuario</button>`;
   clearTimeout(admTimer);
+  paintNow();
   if (st.scanning) admTimer = setTimeout(() => S.detail?.admin && renderAdmin(), 2500);
   else if (S.admWasScanning) srvLoadLibrary(true);
   S.admWasScanning = st.scanning;
@@ -2028,7 +2298,7 @@ window.miCineBack = () => {
 };
 function focusables(){
   const scope = !$('#menu').classList.contains('hidden') ? $('#menu') : !$('#sheet').classList.contains('hidden') ? $('#sheet') : document;
-  return [...scope.querySelectorAll('button, a[href], input, select, .card, .top10 .item, .ep, .prof, .ch')].filter(el => {
+  return [...scope.querySelectorAll('button, a[href], input, select, .card, .top10 .item, .ep, .prof, .ch, .lvrow')].filter(el => {
     if (el.classList.contains('card') && el.parentElement.classList.contains('item')) return false;
     if (el.closest('.hidden') || el.disabled) return false;
     const r = el.getBoundingClientRect();
@@ -2098,39 +2368,271 @@ async function loadLive(force){
   if (!force && liveData && Date.now() - liveAt < 60e3) return liveData;
   liveData = await api('live'); liveAt = Date.now(); return liveData;
 }
+let epgData = null, epgAt = 0, epgDay = 0;
+const LV = { sel: null, pvTimer: null, q: '', group: null, gsel: null, rows: [], n: 0 };
+const hm = s => new Date(s * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+const favKey = () => 'liveFav:' + (S.user?.username || '');
+const liveFavs = () => LS.get(favKey(), []);
+function toggleFav(id){
+  const f = liveFavs(), i = f.indexOf(id);
+  if (i >= 0) f.splice(i, 1); else f.push(id);
+  LS.set(favKey(), f);
+  for (const b of document.querySelectorAll(`[data-fav="${id}"]`)) { const on = i < 0; b.classList.toggle('on', on); b.innerHTML = b.classList.contains('btn') ? (on ? '★ En favoritos' : '☆ Favorito') : (on ? '★' : '☆'); }
+  const ch = document.querySelector('.lvchips'); if (ch) ch.outerHTML = groupChips();
+  toast(i < 0 ? 'Añadido a favoritos' : 'Quitado de favoritos');
+}
+function chPct(n){ const now = Date.now() / 1000; return n ? Math.min(100, Math.max(0, (now - n.s) / (n.e - n.s) * 100)) : 0; }
+function logoHtml(c){
+  const t = `<span class="lgt">${esc(c.name)}</span>`;
+  return c.logo ? `<img loading="lazy" src="${esc(c.logo)}" alt="" onerror="this.outerHTML=this.nextElementSibling.innerHTML"><template>${t}</template>` : t;
+}
+function dayStart(off){ const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + off); return d.getTime() / 1000; }
+function dayLabel(s){
+  const o = Math.round((dayStart(0) - new Date(new Date(s * 1000).setHours(0, 0, 0, 0)) / 1000) / 86400);
+  return o === 0 ? 'Hoy' : o === -1 ? 'Mañana' : new Date(s * 1000).toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric' });
+}
+async function loadEpg(off, force){
+  const from = dayStart(off), to = from + 86400;
+  if (!force && epgData && epgData.from === from && Date.now() - epgAt < 10 * 60e3) return epgData;
+  const d = await api(`epg?from=${from}&to=${to}`);
+  d.from = from; d.to = to; d.by = Object.fromEntries(d.channels.map(c => [c.id, c]));
+  epgData = d; epgAt = Date.now(); return d;
+}
+function liveView(){ return LS.get('liveView', 'ch'); }
 function liveHtml(){
   setTimeout(async () => {
     try { await loadLive(); } catch (e) { if ($('#liveBox')) $('#liveBox').innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
-    if (S.tab === 'live' && $('#liveBox')) $('#liveBox').innerHTML = liveInner();
+    if (S.tab !== 'live' || !$('#liveBox')) return;
+    paintLive();
+    if (liveData.channels.length) loadEpg(epgDay).then(() => {
+      if (S.tab !== 'live') return;
+      if (liveView() === 'guide') paintGuide(); else if ($('#lvPrev')) { $('#lvPrev .pvup').outerHTML = upHtml(LV.sel); }
+    }).catch(e => { if ($('#gWrap')) $('#gWrap').innerHTML = `<div class="empty">No se pudo cargar la guía.<br><small>${esc(e.message)}</small></div>`; });
   }, 0);
-  return `<h1 class="section-title"><span class="live-dot"></span>TV en directo</h1><div id="liveBox">${liveData ? liveInner() : '<div class="empty"><div class="spin" style="margin:auto"></div></div>'}</div>`;
+  const v = liveView();
+  return `<div class="lvtop"><h1 class="section-title"><span class="live-dot"></span>TV en directo</h1>
+    <div class="lvtabs"><button data-lview="ch" class="${v === 'ch' ? 'on' : ''}">Canales</button><button data-lview="guide" class="${v === 'guide' ? 'on' : ''}">Guía TV</button></div></div>
+    <div id="liveBox">${'<div class="empty"><div class="spin" style="margin:auto"></div></div>'}</div>`;
 }
-function liveInner(){
-  const d = liveData;
-  if (!d.configured) return `<div class="empty">Todavía no hay canales.<br>${S.user?.admin ? 'Añade una lista en <b>Panel de administración → TV en directo</b>.' : 'Pídele al administrador que añada una lista de canales.'}</div>`;
-  if (!d.channels.length) return `<div class="empty">No se han podido cargar los canales todavía.${d.error ? '<br><small>' + esc(d.error) + '</small>' : ' Prueba en unos segundos.'}</div>`;
-  const groups = [...new Set(d.channels.map(c => c.group))];
-  if (S.liveGroup && !groups.includes(S.liveGroup)) S.liveGroup = null;
+function paintLive(){
+  const box = $('#liveBox'), d = liveData; if (!box) return;
+  stopPreview();
+  if (!d.configured) { box.innerHTML = `<div class="empty">Todavía no hay canales.<br>${S.user?.admin ? 'Añade una lista en <b>Panel de administración → TV en directo</b>.' : 'Pídele al administrador que añada una lista de canales.'}</div>`; return; }
+  if (!d.channels.length) { box.innerHTML = `<div class="empty">No se han podido cargar los canales todavía.${d.error ? '<br><small>' + esc(d.error) + '</small>' : ' Prueba en unos segundos.'}</div>`; return; }
+  if (liveView() === 'guide') { box.innerHTML = guideHtml(); paintGuide(); return; }
+  box.innerHTML = channelsHtml(); bindChannels(); startPreview();
+}
+function chList(){
+  const fav = liveFavs(), q = norm(LV.q);
+  return liveData.channels.filter(c => (LV.group === '★' ? fav.includes(c.id) : !LV.group || c.group === LV.group) && (!q || norm(c.name).includes(q)));
+}
+function groupChips(){
+  const groups = [...new Set(liveData.channels.map(c => c.group).filter(Boolean))];
+  const nf = liveFavs().length;
+  if ((LV.group && LV.group !== '★' && !groups.includes(LV.group)) || (LV.group === '★' && !nf)) LV.group = null;
+  const opts = [['', 'Todos'], ...(nf ? [['★', '★ Favoritos']] : []), ...groups.map(g => [g, g])];
+  return `<div class="chips lvchips">${opts.map(([g, l]) => `<button class="chip ${(LV.group || '') === g ? 'on' : ''}" data-lgroup="${esc(g)}">${esc(l)}</button>`).join('')}</div>`;
+}
+
+/* ---- Lista de canales con vista previa ---- */
+function rowHtml(c){
+  const fav = liveFavs().includes(c.id);
+  return `<div class="lvrow ${LV.sel === c.id ? 'on' : ''}" data-lsel="${c.id}" role="button" tabindex="0">
+    <div class="lg">${logoHtml(c)}</div>
+    <div class="inf"><b>${esc(c.name)}</b><span class="np">${c.now ? esc(c.now.t) : '<i>Sin guía</i>'}</span>${c.now ? `<div class="prog"><i style="width:${chPct(c.now)}%"></i></div>` : ''}</div>
+    <button class="fav ${fav ? 'on' : ''}" data-fav="${c.id}" aria-label="Favorito">${fav ? '★' : '☆'}</button>
+    <button class="pl" data-live="${c.id}" aria-label="Ver ${esc(c.name)}">${ICON.play}</button></div>`;
+}
+function channelsHtml(){
+  const list = chList();
+  if (!LV.sel || !list.some(c => c.id === LV.sel)) LV.sel = (list[0] || liveData.channels[0]).id;
+  return `<div class="lv">
+    <div class="lvprev" id="lvPrev">${prevHtml()}</div>
+    <div class="lvside">
+      <div class="lvsearch"><svg class="i" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg><input id="lvQ" type="search" placeholder="Buscar canal…" value="${esc(LV.q)}" autocomplete="off"></div>
+      ${groupChips()}
+      <div class="lvlist" id="lvList">${listInner(list)}</div>
+    </div></div>`;
+}
+function listInner(list){ return list.length ? list.map(rowHtml).join('') : '<div class="empty">Ningún canal coincide.</div>'; }
+function upHtml(id){
+  const c = liveData.channels.find(x => x.id === id); if (!c) return '<div class="pvup"></div>';
   const now = Date.now() / 1000;
-  const list = d.channels.filter(c => !S.liveGroup || c.group === S.liveGroup);
-  const tile = c => {
-    const pr = c.now ? Math.min(100, Math.max(0, (now - c.now.s) / (c.now.e - c.now.s) * 100)) : 0;
-    const hhmm = s => new Date(s * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    return `<div class="ch" data-live="${c.id}" title="${esc(c.name)}"><div class="lg">${c.logo ? `<img loading="lazy" src="${esc(c.logo)}" alt="" onerror="this.replaceWith(document.createTextNode('${esc(c.name.slice(0, 3)).replace(/'/g, '')}'))">` : esc(c.name.slice(0, 3))}</div>
-      <div class="cn">${esc(c.name)}</div><div class="np">${c.now ? 'Ahora: ' + esc(c.now.t) : c.next ? '' : '&nbsp;'}${c.next ? `${c.now ? '<br>' : ''}${hhmm(c.next.s)} · ${esc(c.next.t)}` : ''}</div>
-      ${c.now ? `<div class="prog"><i style="width:${pr}%"></i></div>` : ''}</div>`;
-  };
-  return `<div class="chips" style="margin-bottom:12px">${['', ...groups].map(g => `<button class="chip ${(S.liveGroup || '') === g ? 'on' : ''}" data-lgroup="${esc(g)}">${esc(g || 'Todos')}</button>`).join('')}</div>
-    <div class="chgrid">${list.map(tile).join('')}</div>`;
+  let up = (epgData?.by[id]?.p || []).filter(p => p[0] > now).slice(0, 4);
+  if (!up.length && c.next) up = [[c.next.s, 0, c.next.t]];
+  return `<div class="pvup">${up.length ? '<h3>A continuación</h3>' + up.map(p => `<div><b>${hm(p[0])}</b><span>${esc(p[2])}</span></div>`).join('') : ''}</div>`;
 }
+function prevHtml(){
+  const c = liveData.channels.find(x => x.id === LV.sel); if (!c) return '';
+  const pv = LS.get('livePv', true), fav = liveFavs().includes(c.id);
+  return `<div class="pvbox">
+      <div class="pvlogo">${logoHtml(c)}</div>
+      <video id="pvVid" muted playsinline autoplay disablepictureinpicture></video>
+      <div class="pvmsg" id="pvMsg">${pv ? '' : 'Vista previa desactivada'}</div>
+    </div>
+    <div class="pvov">
+      <div class="pvtag"><span class="badge-live">EN VIVO</span><span class="grp">${esc(c.group || '')}</span></div>
+      <h2>${esc(c.name)}</h2>
+      ${c.now ? `<div class="pvnow"><span>${esc(c.now.t)}</span><small>${hm(c.now.s)} – ${hm(c.now.e)}</small></div><div class="prog"><i style="width:${chPct(c.now)}%"></i></div>` : '<div class="pvnow"><small>Sin información de programación</small></div>'}
+      <div class="pvbtns"><button class="btn play" data-live="${c.id}">${ICON.play}Ver ahora</button><button class="btn sec ${fav ? 'on' : ''}" data-fav="${c.id}">${fav ? '★ En favoritos' : '☆ Favorito'}</button><button class="btn sec" id="pvToggle" title="La vista previa usa una conexión mientras miras la lista">Vista previa: ${pv ? 'sí' : 'no'}</button></div>
+      ${upHtml(c.id)}
+    </div>`;
+}
+function bindChannels(){
+  const q = $('#lvQ');
+  if (q) q.oninput = () => { LV.q = q.value; $('#lvList').innerHTML = listInner(chList()); };
+  bindPrev();
+}
+function bindPrev(){
+  const t = $('#pvToggle');
+  if (t) t.onclick = () => { const on = !LS.get('livePv', true); LS.set('livePv', on); t.textContent = 'Vista previa: ' + (on ? 'sí' : 'no'); $('#pvMsg').textContent = on ? '' : 'Vista previa desactivada'; if (on) startPreview(); else stopPreview(); };
+}
+function stopPreview(){
+  clearTimeout(LV.pvTimer);
+  const v = $('#pvVid');
+  if (v && v.getAttribute('src')) { v.onerror = null; v.pause(); v.removeAttribute('src'); v.load(); }
+  v?.closest('.pvbox')?.classList.remove('playing');
+}
+function startPreview(){
+  clearTimeout(LV.pvTimer);
+  if (!LS.get('livePv', true) || !S.server) return;
+  const id = LV.sel;
+  LV.pvTimer = setTimeout(() => {
+    const v = $('#pvVid');
+    if (!v || LV.sel !== id || document.hidden || !$('#player').classList.contains('hidden') || S.tab !== 'live') return;
+    const box = v.closest('.pvbox');
+    $('#pvMsg').innerHTML = '<div class="spin"></div>';
+    v.onplaying = () => { box.classList.add('playing'); $('#pvMsg').textContent = ''; };
+    v.onerror = () => { box.classList.remove('playing'); if (LV.sel === id) $('#pvMsg').textContent = 'Vista previa no disponible ahora mismo'; };
+    v.src = `live/${id}?pv=1`; v.play().catch(() => {});
+  }, 900);
+}
+function selectChannel(id){
+  if (LV.sel === id && $('#pvVid')) return;
+  stopPreview();
+  LV.sel = id;
+  for (const r of document.querySelectorAll('.lvrow')) r.classList.toggle('on', r.dataset.lsel === id);
+  const pv = $('#lvPrev'); if (!pv) return;
+  pv.innerHTML = prevHtml(); bindPrev(); startPreview();
+  if (innerWidth < 900 && !TV) pv.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) stopPreview(); else if (S.tab === 'live' && $('#pvVid')) startPreview(); });
+
+/* ---- Guía de programación en rejilla ---- */
+const GPX = () => innerWidth < 700 ? 3.4 : 4.6;     // píxeles por minuto
+const CHW = () => innerWidth < 700 ? 104 : 200;     // ancho de la columna de canales
+function guideHtml(){
+  const days = [0, 1, 2].map(o => {
+    const d = new Date(dayStart(o) * 1000);
+    return `<button class="gday ${epgDay === o ? 'on' : ''}" data-gday="${o}"><small>${o === 0 ? 'HOY' : o === 1 ? 'MAÑANA' : d.toLocaleDateString('es-ES', { weekday: 'short' }).replace('.', '').toUpperCase()}</small><b>${d.getDate()}</b></button>`;
+  }).join('');
+  return `<div class="gtop"><div class="gdays">${days}${epgDay === 0 ? '<button class="gday gnowb" id="gNow"><small>IR A</small><b>Ahora</b></button>' : ''}</div>
+      <div class="gdet" id="gDet"><div class="ghint">${TV ? 'Mueve el foco por la guía para ver el detalle de cada programa.' : 'Toca un programa para ver el detalle · toca el canal para verlo.'}</div></div></div>
+    ${groupChips()}
+    <div class="gwrap" id="gWrap"><div class="spin" style="margin:30px auto"></div></div>`;
+}
+function paintGuide(){
+  const w = $('#gWrap'); if (!w || !epgData) return;
+  if (epgData.from !== dayStart(epgDay)) { loadEpg(epgDay).then(paintGuide).catch(() => {}); return; }
+  const px = GPX(), cw = CHW(), from = epgData.from, to = epgData.to, W = Math.round((to - from) / 60 * px);
+  const ticks = [];
+  for (let t = from; t < to; t += 1800) ticks.push(`<span style="left:${(t - from) / 60 * px}px">${hm(t)}</span>`);
+  const now = Date.now() / 1000;
+  LV.rows = chList(); LV.n = 0;
+  w.innerHTML = `<div class="gscroll" id="gScroll" style="--chw:${cw}px"><div class="ginner" style="width:${W + cw}px">
+      <div class="ghead"><div class="gcorner">${epgData.channels.some(c => c.p.length) ? '' : '<small>Sin guía</small>'}</div><div class="gticks" style="width:${W}px">${ticks.join('')}${now > from && now < to ? `<i class="gnowlbl" id="gLbl" style="left:${(now - from) / 60 * px}px">${hm(now)}</i>` : ''}</div></div>
+      <div id="gRows"></div>
+      ${now > from && now < to ? `<div class="gnowline" id="gLine" style="left:${cw + (now - from) / 60 * px}px"></div>` : ''}
+    </div></div>`;
+  if (!LV.rows.length) { $('#gRows').innerHTML = '<div class="empty" style="position:sticky;left:0;width:min(100vw,600px)">Ningún canal en esta categoría.</div>'; }
+  moreRows();
+  const sc = $('#gScroll');
+  const fit = () => { const top = sc.getBoundingClientRect().top + scrollY, nav = $('#bottomNav')?.offsetHeight || 0; sc.style.height = Math.max(320, innerHeight * 0.6, innerHeight - Math.max(0, top - scrollY) - nav - 6) + 'px'; };
+  fit();
+  sc.scrollLeft = epgDay === 0 ? Math.max(0, (now - from) / 60 * px - 90) : 20 * 60 * px - 40;
+  sc.onscroll = () => { if (sc.scrollTop + sc.clientHeight > sc.scrollHeight - 600) moreRows(); };
+  if ($('#gNow')) $('#gNow').onclick = () => sc.scrollTo({ left: Math.max(0, (Date.now() / 1000 - from) / 60 * px - 90), behavior: 'smooth' });
+}
+function moreRows(){
+  const box = $('#gRows'); if (!box || LV.n >= LV.rows.length) return;
+  const chunk = LV.rows.slice(LV.n, LV.n + 40); LV.n += chunk.length;
+  box.insertAdjacentHTML('beforeend', chunk.map(gRowHtml).join(''));
+}
+function gRowHtml(c){
+  const px = GPX(), from = epgData.from, to = epgData.to, now = Date.now() / 1000;
+  const ps = epgData.by[c.id]?.p || [];
+  let blocks;
+  if (ps.length) {
+    blocks = ps.map(p => {
+      const s = Math.max(p[0], from), e = Math.min(p[1], to);
+      const st = p[1] <= now ? 'past' : p[0] <= now ? 'cur' : '';
+      return `<button class="gp ${st} ${LV.gsel === c.id + '|' + p[0] ? 'sel' : ''}" style="left:${(s - from) / 60 * px}px;width:${Math.max(4, (e - s) / 60 * px - 4)}px" data-gp="${c.id}|${p[0]}"><span><b>${esc(p[2])}</b><small>${hm(p[0])}–${hm(p[1])}</small></span></button>`;
+    }).join('');
+  } else {
+    blocks = '';
+    for (let t = from; t < to; t += 3 * 3600) blocks += `<button class="gp none" style="left:${(t - from) / 60 * px}px;width:${3 * 60 * px - 4}px" data-live="${c.id}"><span><b>${esc(c.name)}</b><small>Sin información · toca para verlo</small></span></button>`;
+  }
+  return `<div class="grow"><button class="gch" data-live="${c.id}" title="Ver ${esc(c.name)}"><span class="lg">${logoHtml(c)}</span><span class="nm">${esc(c.name)}</span></button><div class="gtrack">${blocks}</div></div>`;
+}
+const descCache = {};
+async function showProg(cid, s){
+  const c = liveData.channels.find(x => x.id === cid), p = epgData?.by[cid]?.p.find(x => x[0] === +s);
+  if (!c || !p) return;
+  const key = cid + '|' + p[0]; LV.gsel = key;
+  for (const x of document.querySelectorAll('.gp.sel')) x.classList.remove('sel');
+  document.querySelector(`.gp[data-gp="${key}"]`)?.classList.add('sel');
+  const now = Date.now() / 1000, live = p[0] <= now && now < p[1];
+  const paint = d => { const box = $('#gDet'); if (!box || LV.gsel !== key) return; box.innerHTML = `
+    <div class="gdl"><span class="lg">${logoHtml(c)}</span></div>
+    <div class="gdr"><div class="gdm">${live ? '<span class="badge-live">EN EMISIÓN</span>' : ''}<span>${esc(c.name)} · ${dayLabel(p[0])}, ${hm(p[0])} – ${hm(p[1])}${p[3] ? ' · ' + esc(p[3]) : ''}</span></div>
+      <h3>${esc(p[2])}</h3>${live ? `<div class="prog"><i style="width:${chPct({ s: p[0], e: p[1] })}%"></i></div>` : ''}
+      <p>${d === undefined ? '<span class="small">Cargando…</span>' : d ? esc(d) : '<span class="small">Sin descripción.</span>'}</p></div>
+    ${live ? `<button class="btn play" data-live="${cid}">${ICON.play}Ver ahora</button>` : ''}`; };
+  paint(descCache[key]);
+  if (descCache[key] === undefined) {
+    try { descCache[key] = (await api(`epg/info?id=${cid}&s=${p[0]}`)).d || ''; } catch { descCache[key] = ''; }
+    paint(descCache[key]);
+  }
+}
+function onGuideClick(gp){
+  const [cid, s] = gp.dataset.gp.split('|');
+  if (LV.gsel === gp.dataset.gp && gp.classList.contains('cur')) return playLive(cid);
+  showProg(cid, s);
+}
+document.addEventListener('focusin', e => {
+  if (!TV || S.tab !== 'live') return;
+  const r = e.target.closest?.('.lvrow'); if (r) { clearTimeout(LV.fTimer); LV.fTimer = setTimeout(() => selectChannel(r.dataset.lsel), 450); return; }
+  const g = e.target.closest?.('.gp[data-gp]'); if (g) { const [cid, s] = g.dataset.gp.split('|'); showProg(cid, s); scrollGuideTo(g); }
+});
+function scrollGuideTo(el){
+  const sc = $('#gScroll'); if (!sc) return;
+  const r = el.getBoundingClientRect(), b = sc.getBoundingClientRect(), cw = CHW();
+  if (r.left < b.left + cw) sc.scrollBy({ left: r.left - b.left - cw - 20 });
+  else if (r.left > b.right - 120) sc.scrollBy({ left: r.left - b.right + Math.min(r.width, 400) + 20 });
+  if (r.top < b.top + 40 || r.bottom > b.bottom) sc.scrollBy({ top: r.top - b.top - b.height / 2 });
+}
+setInterval(async () => {
+  if (S.tab !== 'live' || !$('#liveBox') || document.hidden) return;
+  const ln = $('#gLine');
+  if (ln && epgData) { const now = Date.now() / 1000, x = (now - epgData.from) / 60 * GPX(); ln.style.left = CHW() + x + 'px'; const lb = $('#gLbl'); if (lb) { lb.style.left = x + 'px'; lb.textContent = hm(now); } }
+  if ($('#lvList')) {
+    try { await loadLive(); } catch { return; }
+    for (const r of document.querySelectorAll('.lvrow')) {
+      const c = liveData.channels.find(x => x.id === r.dataset.lsel); if (!c?.now) continue;
+      r.querySelector('.np').textContent = c.now.t;
+      const i = r.querySelector('.prog i'); if (i) i.style.width = chPct(c.now) + '%';
+    }
+  }
+}, 60e3);
+
 async function playLive(id){
   const ch = liveData?.channels.find(c => c.id === id); if (!ch) return;
-  stopHeroTrailer();
+  stopHeroTrailer(); stopPreview();
   try { const a = await api('live/avail?id=' + id); if (!a.free) { toast('Todas las conexiones de este canal están ocupadas. Prueba en un rato.'); return; } } catch {}
   let tok = LS.get('srvToken', '');
   if (!tok) { try { tok = (await api('token')).token; LS.set('srvToken', tok); } catch {} }
   const tsUrl = new URL(`live/${id}.ts?t=${encodeURIComponent(tok)}`, location.href).href;
-  if (window.MiCineAndroid) { MiCineAndroid.play(JSON.stringify({ url: tsUrl, title: ch.name, subtitle: 'En directo', start: 0, fileId: 'live', key: 'live', hasNext: false })); return; }
+  if (window.MiCineAndroid) { MiCineAndroid.play(JSON.stringify({ url: tsUrl, title: ch.name, subtitle: ch.now ? ch.now.t : 'En directo', start: 0, fileId: 'live', key: 'live', hasNext: false, live: true })); return; }
   // iPhone/iPad y Android sin la app: el canal se abre en VLC (o en otro reproductor en Android)
   const ua = navigator.userAgent;
   const isIOS = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -2144,8 +2646,8 @@ async function playLive(id){
     return;
   }
   const p = $('#player');
-  S.cur = { live: true, it: { title: ch.name, key: 'live' }, file: { id: 'live' }, started: false };
-  p.innerHTML = `<div class="pbar"><button class="hbtn" id="pBack">${ICON.back}</button><div class="ttl"><span class="live-dot"></span>${esc(ch.name)}<small>${ch.now ? esc(ch.now.t) : 'En directo'}</small></div></div>
+  S.cur = { live: true, liveId: id, it: { title: ch.name, key: 'live' }, file: { id: 'live' }, started: false };
+  p.innerHTML = `<div class="pbar livebar"><button class="hbtn" id="pBack" aria-label="Volver a los canales">${ICON.back}</button><span class="badge-live">EN VIVO</span><div class="ttl">${esc(ch.name)}<small>${ch.now ? esc(ch.now.t) : ''}</small></div></div>
     <video id="vid" controls autoplay playsinline></video>`;
   if (p.classList.contains('hidden')) pushH('p');
   p.classList.remove('hidden', 'mini'); document.body.classList.add('lock');
@@ -2154,8 +2656,8 @@ async function playLive(id){
   v.addEventListener('error', () => pmsg(`No se puede reproducir este canal en el navegador.<br><small class="small">En la app de Android se ven más canales.</small><br><button class="btn sec">Cerrar</button>`, closePlayer));
   v.src = `live/${id}`; v.play().catch(() => {});
   $('#pBack').onclick = closePlayer;
-  p.onpointermove = p.ontouchstart = () => { p.classList.remove('idle'); clearTimeout(idleTimer); idleTimer = setTimeout(() => p.classList.add('idle'), 3500); };
-  p.onpointermove();
+  // En directo la barra con «volver» se queda siempre visible (en tablet no hay otra forma fácil de salir)
+  clearTimeout(idleTimer); p.classList.remove('idle'); p.onpointermove = p.ontouchstart = null;
   try { p.requestFullscreen?.(); } catch {}
 }
 

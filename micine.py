@@ -502,12 +502,16 @@ def build_library():
                     it['age'] = dd['age']
         it['_files'].extend(g['files'])
         it['k0'].append(g['k0'])
-    paths = {}
+    paths, info = {}, {}
     out_items, others = [], []
     for it in items.values():
         fs = it.pop('_files')
         for f in fs:
             paths[f['id']] = (f['root'], f['rel'])
+            sub = ''
+            if f.get('season') or f.get('episode'):
+                sub = 'T%d · E%d' % (f.get('season') or 1, f.get('episode') or 0)
+            info[f['id']] = (it['title'], sub, it.get('p') or '', it.get('b') or '')
         it['added'] = max(f['added'] for f in fs) * 1000
         if not it['matched'] and all(f.get('season') for f in fs):
             it['type'] = 'tv'
@@ -529,7 +533,7 @@ def build_library():
             'trending': kv_get('trending') or [], 'genres': kv_get('genres') or {}}
     raw = json.dumps(data, ensure_ascii=False, separators=(',', ':')).encode()
     with LIB_LOCK:
-        LIB.update(version=data['version'], json=raw, gz=gzip.compress(raw, 6), paths=paths,
+        LIB.update(version=data['version'], json=raw, gz=gzip.compress(raw, 6), paths=paths, info=info,
                    keys=[i['key'] for i in out_items], det_keys=set(det))
     return groups, meta
 
@@ -595,13 +599,13 @@ ACTIVE = {}          # índice de cuenta -> conexiones en uso ahora mismo
 ACTIVE_LOCK = threading.Lock()
 
 
-def pick_account(ch):
-    """Elige la primera lista que tenga este canal y una conexión libre."""
+def pick_account(ch, spare=0):
+    """Elige la primera lista que tenga este canal y una conexión libre (spare: cuántas dejar libres)."""
     accts = live_cfg()['accounts']
     with ACTIVE_LOCK:
         for ai, url in ch['urls']:
             mx = int(accts[ai].get('max') or 0) if ai < len(accts) else 0
-            if mx <= 0 or ACTIVE.get(ai, 0) < mx:
+            if mx <= 0 or ACTIVE.get(ai, 0) < mx - spare:
                 ACTIVE[ai] = ACTIVE.get(ai, 0) + 1
                 return ai, url
     return None, None
@@ -610,6 +614,125 @@ def pick_account(ch):
 def release_account(ai):
     with ACTIVE_LOCK:
         ACTIVE[ai] = max(0, ACTIVE.get(ai, 0) - 1)
+
+
+# ------------------------------------------------------------------ reproducciones en curso (como el panel de Plex)
+NOW = {}             # id -> reproducción
+NOW_LOCK = threading.Lock()
+BLOCKED = {}         # (user_id, ref) -> (hasta, mensaje)  tras «Detener»
+
+
+def device_name(ua):
+    ua = ua or ''
+    if 'MiCineApp' in ua or '; wv)' in ua:
+        dev = 'App Android'
+    elif re.search(r'VLC|LibVLC', ua, re.I):
+        dev = 'VLC'
+    elif re.search(r'iPhone', ua):
+        dev = 'iPhone'
+    elif re.search(r'iPad|Macintosh.*Mobile', ua):
+        dev = 'iPad'
+    elif 'Android' in ua:
+        dev = 'Android'
+    elif 'Windows' in ua:
+        dev = 'Windows'
+    elif 'Mac OS' in ua:
+        dev = 'Mac'
+    elif 'Linux' in ua:
+        dev = 'Linux'
+    else:
+        dev = 'Dispositivo'
+    for b in ('Edg', 'Firefox', 'Chrome', 'Safari'):
+        if b + '/' in ua and dev not in ('App Android', 'VLC'):
+            return '%s · %s' % (dev, {'Edg': 'Edge'}.get(b, b))
+    return dev
+
+
+def now_begin(u, kind, ref, ip, ua, **kw):
+    nid = hashlib.sha1(('%s|%s|%s|%s|%s' % (u['id'], kind, ref, ip, kw.get('preview', False))).encode()).hexdigest()[:12]
+    t = time.time()
+    with NOW_LOCK:
+        e = NOW.get(nid)
+        if not e or (not e['conns'] and t - e['last'] > 30):
+            e = NOW[nid] = {'id': nid, 'uid': u['id'], 'user': u['username'], 'kind': kind, 'ref': ref, 'ip': ip,
+                            'device': device_name(ua), 'started': t, 'last': t, 'conns': 0, 'bytes': 0,
+                            'stop': False, 'pos': None, 'dur': None, 'paused': False, 'hb': 0}
+        e.update(kw)
+        e['conns'] += 1
+        e['last'] = t
+        e['stop'] = False
+        return e
+
+
+def now_end(e):
+    with NOW_LOCK:
+        e['conns'] = max(0, e['conns'] - 1)
+        e['last'] = time.time()
+
+
+def now_list():
+    t = time.time()
+    out = []
+    with NOW_LOCK:
+        for k, e in list(NOW.items()):
+            alive = e['conns'] > 0 or t - e['last'] < 25 or t - e.get('hb', 0) < 25
+            if not alive:
+                if t - e['last'] > 120:
+                    del NOW[k]
+                continue
+            if e['stop']:
+                continue
+            out.append(dict(e))
+    with LIB_LOCK:
+        info = LIB.get('info', {})
+    with LIVE_LOCK:
+        by_id = LIVE['by_id']
+    accts = live_cfg()['accounts']
+    res = []
+    for e in sorted(out, key=lambda x: x['started']):
+        d = {k: e[k] for k in ('id', 'user', 'kind', 'device', 'ip', 'started', 'pos', 'dur', 'paused')}
+        d['mbps'] = round(e['bytes'] * 8 / max(1.0, t - e['started']) / 1e6, 1)
+        d['mode'] = e.get('mode', '')
+        d['preview'] = bool(e.get('preview'))
+        if e['kind'] == 'live':
+            ch = by_id.get(e['ref']) or {}
+            d['title'] = ch.get('name') or 'Canal'
+            d['sub'] = 'TV en directo'
+            d['poster'] = ch.get('logo') or ''
+            ai = e.get('account')
+            if ai is not None and ai < len(accts):
+                mx = int(accts[ai].get('max') or 0)
+                with ACTIVE_LOCK:
+                    used = ACTIVE.get(ai, 0)
+                d['account'] = '%s (%d%s en uso)' % (accts[ai].get('name') or 'Lista %d' % (ai + 1), used, '/%d' % mx if mx else '')
+        else:
+            ti = info.get(e['ref']) or ('Vídeo', '', '', '')
+            d['title'], d['sub'], d['poster'], d['backdrop'] = ti
+            if d['pos'] is None:
+                if e.get('fsize'):
+                    d['frac'] = min(1.0, (e['fstart'] + e['fbytes']) / e['fsize'])
+                elif e.get('frac') is not None:
+                    d['frac'] = e['frac']
+        res.append(d)
+    return res
+
+
+def now_stop(nid, msg):
+    with NOW_LOCK:
+        e = NOW.get(nid)
+        if not e:
+            return False
+        e['stop'] = True
+        e['msg'] = msg
+        BLOCKED[(e['uid'], e['ref'])] = (time.time() + 90, msg)
+    return True
+
+
+def blocked(uid, ref):
+    b = BLOCKED.get((uid, ref))
+    if b and b[0] > time.time():
+        return b[1] or 'El administrador ha detenido esta reproducción.'
+    return None
 
 
 def http_get(url, timeout=60):
@@ -680,42 +803,55 @@ def refresh_live(force=False):
         with LIVE_LOCK:
             LIVE.update(channels=chans, by_id={c['id']: c for c in chans}, at=now, error='; '.join(errs))
         log('TV en directo: %d canales de %d listas' % (len(chans), len(cfg['accounts'])))
-    if cfg.get('epg') and (force or now - LIVE['epg_at'] > 12 * 3600):
+    if cfg.get('epg') and (force or now - LIVE['epg_at'] > 6 * 3600):
         try:
             import xml.etree.ElementTree as ET
             import io
-            want = {c['tvg'] for c in LIVE['channels'] if c['tvg']}
-            epg = {}
-            lo, hi = now - 3 * 3600, now + 30 * 3600
+            epg, ids, names = {}, set(), {}
+            emap, want = {}, None
+            lo, hi = now - 27 * 3600, now + 48 * 3600
             for ev, el in ET.iterparse(io.BytesIO(http_get(cfg['epg'], 180)), events=('end',)):
                 if el.tag == 'programme':
+                    if want is None:   # ya tenemos todos los <channel>: emparejar por id o por nombre
+                        for c in LIVE['channels']:
+                            k = c['tvg'] if c['tvg'] in ids else names.get(norm(c['name'])) or names.get(norm(re.sub(r'\b(hd|fhd|uhd|4k|sd)\b', '', c['name'], flags=re.I)))
+                            if k:
+                                emap[c['id']] = k
+                        want = set(emap.values())
                     ch = el.get('channel')
                     if ch in want:
                         st, sp = xmltv_time(el.get('start')), xmltv_time(el.get('stop'))
                         if sp > lo and st < hi:
                             t = el.findtext('title') or ''
-                            epg.setdefault(ch, []).append((st, sp, t))
+                            d = re.sub(r'\s+', ' ', el.findtext('desc') or '').strip()[:400]
+                            cat = el.findtext('category') or ''
+                            epg.setdefault(ch, []).append((st, sp, t, d, cat))
                     el.clear()
                 elif el.tag == 'channel':
+                    cid = el.get('id')
+                    ids.add(cid)
+                    for dn in el.findall('display-name'):
+                        if dn.text:
+                            names.setdefault(norm(dn.text), cid)
                     el.clear()
             for v in epg.values():
                 v.sort()
             with LIVE_LOCK:
-                LIVE.update(epg=epg, epg_at=now)
+                LIVE.update(epg=epg, epg_at=now, emap=emap)
             log('Guía de TV: %d canales con programación' % len(epg))
         except Exception as e:
             log('Guía de TV', e)
-            LIVE['epg_at'] = now - 11 * 3600  # reintentar en 1 h
+            LIVE['epg_at'] = now - 5 * 3600  # reintentar en 1 h
 
 
 def live_listing():
     now = time.time()
     out = []
     with LIVE_LOCK:
-        chans, epg = LIVE['channels'], LIVE['epg']
+        chans, epg, emap = LIVE['channels'], LIVE['epg'], LIVE.get('emap', {})
     for c in chans:
         cur = nxt = None
-        for st, sp, t in epg.get(c['tvg'], []):
+        for st, sp, t, *_ in epg.get(emap.get(c['id'], c['tvg']), []):
             if st <= now < sp:
                 cur = (t, st, sp)
             elif st >= now:
@@ -725,6 +861,29 @@ def live_listing():
                     'now': {'t': cur[0], 's': cur[1], 'e': cur[2]} if cur else None,
                     'next': {'t': nxt[0], 's': nxt[1]} if nxt else None})
     return out
+
+
+def epg_grid(frm, to):
+    """Programación de todos los canales entre dos instantes (para la guía en rejilla)."""
+    with LIVE_LOCK:
+        chans, epg, emap = LIVE['channels'], LIVE['epg'], LIVE.get('emap', {})
+    out = []
+    for c in chans:
+        progs = [[st, sp, t, cat] for st, sp, t, _d, cat in epg.get(emap.get(c['id'], c['tvg']), []) if sp > frm and st < to]
+        out.append({'id': c['id'], 'name': c['name'], 'logo': c['logo'], 'group': c['group'], 'p': progs})
+    return out
+
+
+def epg_desc(cid, st):
+    with LIVE_LOCK:
+        chans, epg, emap = LIVE['by_id'], LIVE['epg'], LIVE.get('emap', {})
+    c = chans.get(cid)
+    if not c:
+        return None
+    for p in epg.get(emap.get(cid, c['tvg']), []):
+        if int(p[0]) == int(st):
+            return {'s': p[0], 'e': p[1], 't': p[2], 'd': p[3], 'cat': p[4]}
+    return None
 
 
 def live_loop():
@@ -856,6 +1015,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def user(self):
         return user_for_token(self.token())
+
+    def abort_conn(self):
+        """Corta la conexión al momento (descarta lo que quede en el búfer) cuando el administrador detiene algo."""
+        import socket
+        import struct
+        try:
+            self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
+        except Exception:
+            pass
+        self.close_connection = True
 
     def send(self, code, body=b'', ctype='application/json; charset=utf-8', headers=None, gz_ok=True):
         if isinstance(body, (dict, list)):
@@ -1077,6 +1246,22 @@ class Handler(BaseHTTPRequestHandler):
             with LIVE_LOCK:
                 err = LIVE['error']
             return self.send(200, {'configured': bool(live_cfg()['accounts']), 'channels': live_listing(), 'error': err if u['admin'] else ''})
+        if ep == 'epg':
+            try:
+                frm = float((q.get('from') or [0])[0]) or time.time() - 3 * 3600
+                to = float((q.get('to') or [0])[0]) or frm + 24 * 3600
+            except ValueError:
+                return self.err(400, 'parámetros')
+            to = min(to, frm + 36 * 3600)
+            return self.send(200, {'from': frm, 'to': to, 'now': time.time(), 'channels': epg_grid(frm, to)})
+        if ep == 'epg/info':
+            try:
+                d = epg_desc((q.get('id') or [''])[0], float((q.get('s') or [0])[0]))
+            except ValueError:
+                d = None
+            return self.send(200, d or {}) if d else self.err(404, 'sin datos')
+        if ep == 'admin/now' and u['admin']:
+            return self.send(200, {'sessions': now_list()})
         if ep == 'admin/live' and u['admin']:
             with LIVE_LOCK:
                 n, ne = len(LIVE['channels']), len(LIVE['epg'])
@@ -1132,6 +1317,37 @@ class Handler(BaseHTTPRequestHandler):
         u = self.user()
         if not u:
             return self.err(401, 'sesión requerida')
+        if ep == 'nowplaying' and method == 'POST':
+            b = self.body()
+            ref = str(b.get('ref') or '')
+            kind = 'live' if b.get('live') else 'file'
+            msg = blocked(u['id'], ref)
+            hit = False
+            with NOW_LOCK:
+                for e in NOW.values():
+                    if e['uid'] == u['id'] and e['ref'] == ref and e['kind'] == kind and not e.get('preview'):
+                        hit = True
+                        e['hb'] = time.time()
+                        for k in ('pos', 'dur'):
+                            if isinstance(b.get(k), (int, float)):
+                                e[k] = float(b[k])
+                        e['paused'] = bool(b.get('paused'))
+                        if e['stop']:
+                            msg = e.get('msg') or 'El administrador ha detenido esta reproducción.'
+            if not hit and not msg and ref and (kind == 'live' or resolve(ref)):
+                # vídeo ya descargado en el navegador (o sin conexión abierta): lo registra el aviso periódico
+                e = now_begin(u, kind, ref, self.ip(), self.headers.get('User-Agent', ''), mode='Directo')
+                now_end(e)
+                e['hb'] = time.time()
+                for k in ('pos', 'dur'):
+                    if isinstance(b.get(k), (int, float)):
+                        e[k] = float(b[k])
+                e['paused'] = bool(b.get('paused'))
+            return self.send(200, {'stop': msg or None, 'seen': hit})
+        if ep.startswith('admin/now/') and method == 'POST' and u['admin']:
+            b = self.body()
+            ok = now_stop(ep[len('admin/now/'):], str(b.get('msg') or '').strip()[:200])
+            return self.send(200, {'ok': ok}) if ok else self.err(404, 'ya no está en curso')
         if ep == 'logout':
             with DB_LOCK:
                 db().execute('DELETE FROM sessions WHERE token=?', (self.token(),))
@@ -1287,10 +1503,14 @@ class Handler(BaseHTTPRequestHandler):
     def stream(self, fid):
         if not self.user():
             return self.err(401, 'sesión requerida')
+        u = self.user()
         fid = fid.split('?')[0].split('.')[0]
         full = resolve(fid)
         if not full:
             return self.err(404, 'vídeo no encontrado')
+        msg = blocked(u['id'], fid)
+        if msg:
+            return self.err(403, msg)
         q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
         if 'a' in q:
             return self.transcode(fid, full, q)
@@ -1326,15 +1546,29 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command == 'HEAD':
             return
-        with open(full, 'rb') as fh:
-            fh.seek(start)
-            left = length
-            while left > 0:
-                chunk = fh.read(min(512 * 1024, left))
-                if not chunk:
-                    break
-                self.wfile.write(chunk)
-                left -= len(chunk)
+        small = length < 4 * 1024 * 1024   # sondeos del reproductor (cabecera/índice): no cuentan como reproducción
+        e = None if small else now_begin(u, 'file', fid, self.ip(), self.headers.get('User-Agent', ''),
+                                         mode='Directo', fstart=start, fsize=size, fbytes=0)
+        try:
+            with open(full, 'rb') as fh:
+                fh.seek(start)
+                left = length
+                while left > 0:
+                    if e and e['stop']:
+                        break
+                    chunk = fh.read(min(512 * 1024, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+                    if e:
+                        e['bytes'] += len(chunk)
+                        e['fbytes'] += len(chunk)
+        finally:
+            if e:
+                now_end(e)
+                if e['stop']:
+                    self.abort_conn()
 
 
     def live_stream(self, cid):
@@ -1343,6 +1577,9 @@ class Handler(BaseHTTPRequestHandler):
         /live/<id>.ts  -> MPEG-TS copiado tal cual, para VLC y la app"""
         if not self.user():
             return self.err(401, 'sesión requerida')
+        u = self.user()
+        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        preview = (q.get('pv') or [''])[0] == '1'
         cid = cid.split('?')[0]
         as_ts = cid.endswith('.ts')
         cid = cid[:-3] if as_ts else cid
@@ -1353,9 +1590,25 @@ class Handler(BaseHTTPRequestHandler):
         ff = tool('ffmpeg')
         if not ff:
             return self.err(501, 'ffmpeg no está instalado en el servidor')
-        ai, url = pick_account(ch)
+        msg = blocked(u['id'], cid)
+        if msg:
+            return self.err(403, msg)
+        # Este usuario tenía vistas previas abiertas: se cierran para liberar su conexión
+        mine = []
+        with NOW_LOCK:
+            for x in NOW.values():
+                if x['uid'] == u['id'] and x.get('preview') and x['conns'] > 0:
+                    x['stop'] = True
+                    mine.append(x)
+        for _ in range(30):
+            if not any(x['conns'] for x in mine):
+                break
+            time.sleep(0.1)
+        ai, url = pick_account(ch, 1 if preview else 0)
         if ai is None:
             return self.err(503, 'Todas las conexiones están ocupadas. Prueba en un rato.')
+        e = now_begin(u, 'live', cid, self.ip(), self.headers.get('User-Agent', ''), account=ai, preview=preview,
+                      mode='Vista previa' if preview else ('Copia directa (VLC/app)' if as_ts else 'Navegador (audio AAC)'))
         try:
             cmd = [ff, '-hide_banner', '-loglevel', 'error', '-nostdin', '-user_agent', 'Mozilla/5.0']
             if url.lower().startswith('http'):
@@ -1374,11 +1627,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Connection', 'close')
                 self.end_headers()
                 self.close_connection = True
-                while True:
-                    chunk = proc.stdout.read(128 * 1024)
+                while not e['stop']:
+                    chunk = proc.stdout.read(64 * 1024)
                     if not chunk:
                         break
                     self.wfile.write(chunk)
+                    e['bytes'] += len(chunk)
             finally:
                 try:
                     proc.kill()
@@ -1386,6 +1640,11 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
         finally:
+            now_end(e)
+            if e['stop']:
+                self.abort_conn()
+            if preview:
+                e['last'] = 0   # la vista previa desaparece del panel al cerrarse
             release_account(ai)
 
     def transcode(self, fid, full, q):
@@ -1399,6 +1658,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self.err(400, 'parámetros')
         d = probe_file(fid, full) or {}
+        e = now_begin(self.user(), 'file', fid, self.ip(), self.headers.get('User-Agent', ''), mode='Audio convertido a AAC',
+                      frac=(start / d['duration']) if d.get('duration') else None)
         cmd = [ff, '-hide_banner', '-loglevel', 'error', '-nostdin']
         if start:
             cmd += ['-ss', '%.2f' % start]
@@ -1417,12 +1678,16 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             if self.command == 'HEAD':
                 return
-            while True:
+            while not e['stop']:
                 chunk = proc.stdout.read(256 * 1024)
                 if not chunk:
                     break
                 self.wfile.write(chunk)
+                e['bytes'] += len(chunk)
         finally:
+            now_end(e)
+            if e['stop']:
+                self.abort_conn()
             try:
                 proc.kill()
                 proc.wait(timeout=5)
